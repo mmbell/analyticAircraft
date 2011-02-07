@@ -1,0 +1,5 @@
+build/*
+windfields/*
+.DS_Store
+analyticAircraft.xcodeproj/*
+profile
