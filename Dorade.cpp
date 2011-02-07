@@ -362,6 +362,18 @@ ryib_info* Dorade::getRyibBlock(const int& ray)
 	return &ryptr[ray];	
 }
 
+void Dorade::recalculateAirborneAngles()
+{
+	
+	if (rptr->scan_mode == 9) {
+		// Airborne data, need to calculate ground relative azimuth and elevation
+		for (int i=0; i < sptr->num_rays; i++) {
+			calcAirborneAngles(&aptr[i], cfptr, &ryptr[i], &rangles[i]);
+		}
+	}
+
+}
+
 bool Dorade::copyField(const QString& oldFieldName, const QString& newFieldName, 
 					   const QString& newFieldDesc, const QString& newFieldUnits)
 {
@@ -1018,8 +1030,12 @@ void Dorade::sweepwrite(const char swp_fname[],struct sswb_info *ssptr,struct vo
 		if ( (fwrite(&desc_len,sizeof(int),1,fp)) != 1) {
 			printf("sweep file read error..\n");
 		}
+		// Discard any previous edit history since it is likely invalid after we've called this routine
+		ssptr->num_key_tables = 1;
+
 		ssptr->sizeof_file = filesize;
 		ssptr->key_table[0].offset = offset;
+		
 		if ( fwrite ((char *)ssptr,sizeof (struct sswb_info),1,fp) !=1 ) {
 			puts("ERROR WRITING SSWB DESCRIPTOR\n");
 			exit(-1);

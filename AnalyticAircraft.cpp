@@ -88,7 +88,12 @@ bool AnalyticAircraft::saveQCedSwp(const QString& suffix)
 	return false;
 }
 
-void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime)
+void AnalyticAircraft::recalculateAirborneAngles()
+{
+	swpfile.recalculateAirborneAngles();
+}	
+
+void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime, int analytic)
 {
 	
 	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
@@ -125,12 +130,23 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 
 		double radarX = ew_gspeed * msecElapsed/1000.0;
 		double radarY = ns_gspeed * msecElapsed/1000.0;
-		double radarLat, radarLon;
+		double radarLat, radarLon,radarAlt;
 		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
+		radarAlt = 3.0;
+		double x = radarX - refX;
+		double y = radarY - refY;
+		double z = radarAlt*1000;
+		double t = 0.;
+		double u, v, w;
+		if (analytic == 0) {
+			BeltramiFlow(x, y, z, t, u, v, w);
+		} else if (analytic == 1) {
+			WrfResample(x, y, z, t, u, v, w);
+		}
 		aptr->lon = radarLon;
 		aptr->lat = radarLat;
-		aptr->alt_msl= 3000.;
-		aptr->alt_agl= 3000.;
+		aptr->alt_msl= radarAlt;
+		aptr->alt_agl= radarAlt;
 		aptr->ew_gspeed= ew_gspeed;
 		aptr->ns_gspeed = ns_gspeed;
 		aptr->vert_vel= 0.;
@@ -138,9 +154,9 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		aptr->roll= 0.;
 		aptr->pitch= 0.;
 		aptr->drift= 0.;
-		aptr->ew_horiz_wind= 0.;
-		aptr->ns_horiz_wind= 0.;
-		aptr->vert_wind= 0.;
+		aptr->ew_horiz_wind= u;
+		aptr->ns_horiz_wind= v;
+		aptr->vert_wind= w;
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
 	}
@@ -165,6 +181,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 		float* refdata = swpfile.getRayData(i, "ZZ");
 		float* veldata = swpfile.getRayData(i, "VV");	
 		float* swdata = swpfile.getRayData(i, "SW");
+		float* ncpdata = swpfile.getRayData(i, "NCP");
 		QDateTime rayTime = swpfile.getRayTime(i);
 		float* gatesp = swpfile.getGateSpacing();
 		double radarX, radarY;
@@ -173,7 +190,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 		for (int n=0; n < swpfile.getNumGates(); n++) {
 			float range = gatesp[n];
 			//float dz = pow(10.0,(refdata[g]*0.1));
-			if(veldata[n] == -32768.) continue;
+			//if(veldata[n] == -32768.) continue;
 			double relX = range*sin(az)*cos(el);
 			double relY = range*cos(az)*cos(el);
 			double rEarth = 6371000;
@@ -199,13 +216,17 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			}
 			
 			// Dz proportional to W eventually, constant for now
-			if (z <= 16000) {
+			if ((z > -5000.0) and (z <= 20000.0)) {
 				refdata[n] = -20.0;
+				swdata[n] = 1.;
+				ncpdata[n] =1.;
+				veldata[n] = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
 			} else {
 				refdata[n] = -32768.;
+				swdata[n] = -32768.;
+				ncpdata[n] = -32768.;
+				veldata[n] = -32768.;
 			}
-			swdata[n] = 1.;
-			veldata[n] = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
 
 		}
 	}
@@ -230,6 +251,9 @@ void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, doub
 						m*l*cos(k*(x-U*t))*sin(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	w = A*cos(k*(x-U*t))*cos(l*(y-V*t))*sin(m*z)*exp(-nu*wavenum*wavenum*t);
+	if (z < 0.01) {
+		u = v = w = 0;
+	}
 }
 
 void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double &u, double &v, double &w)

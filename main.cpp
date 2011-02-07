@@ -22,7 +22,7 @@ int main (int argc, char *argv[]) {
 
 	AnalyticAircraft AC(path);
 	
-	QString analytic = "AC";	
+	QString suffix = "AC";
 	double refLat = 16.5;
 	double refLon = 148.;
 	QTime refTime(23,0);
@@ -36,9 +36,11 @@ int main (int argc, char *argv[]) {
 		for (int f = 0; f < AC.getfileListsize(); ++f) {
 			if (AC.load(f)) {
 				printf("\n\nProcessing file %d\n", f);
-				AC.analyticTrack(refLat, refLon, refTime);
+				AC.analyticTrack(refLat, refLon, refTime, beltrami);
 				AC.resample_wind(refLat, refLon, beltrami);
-				AC.saveQCedSwp(analytic);
+				AC.recalculateAirborneAngles();
+				AC.resample_wind(refLat, refLon, beltrami);
+				AC.saveQCedSwp(suffix);
 			}
 		}	
 	} else printf("No swp files exist in %s\n\n", argv[1]); 
