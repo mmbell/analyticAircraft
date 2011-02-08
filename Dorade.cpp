@@ -126,7 +126,7 @@ bool Dorade::writeSwpfile()
 }
 
 
-bool Dorade::writeSwpfile(const QString& suffix)
+bool Dorade::writeSwpfile(const QString& newfilename)
 {
 
 	// Check the byte order
@@ -135,7 +135,7 @@ bool Dorade::writeSwpfile(const QString& suffix)
 	}
 	
 	// Add a suffix to indicate we've modified the file
-	filename += "." + suffix;
+	filename = newfilename;
 	const char* ccfilename = filename.toAscii().data();
 	int flag = 0;
 	sweepwrite(ccfilename, ssptr, vptr, rptr, cptr,

@@ -16,13 +16,16 @@
 #include <GeographicLib/TransverseMercatorExact.hpp>
 #include "read_dorade.h"
 
-AnalyticAircraft::AnalyticAircraft(QString path)
+AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const int& analytic)
 {
 	
 	// Setup the data path
-	dataPath = QDir(path);
+	dataPath = QDir(in);
+	outPath = QDir(out);
+	swpSuffix = suffix;
 	readSwpDir();
 	
+	analyticType = analytic;
 	Pi = acos(-1);	
 }
 
@@ -37,20 +40,10 @@ bool AnalyticAircraft::readSwpDir()
 	dataPath.setSorting(QDir::Name);
 	QStringList filenames = dataPath.entryList();
 	
-	
 	// Read in the list sweepfiles
 	for (int i = 0; i < filenames.size(); ++i) {
-		QString filename = dataPath.absolutePath() + "/" + filenames.at(i);
 		QStringList fileparts = filenames.at(i).split(".");
-		if (fileparts.size() == 6)
-			//if (filename.right(2) != "QC")
-			swpfileList.append(filename);
-		
-		/*		if(!swpfileList.last().readSwpfile()) {
-		 // Bad file drop it
-		 swpfileList.removeLast();
-		 }
-		 */		
+		if (fileparts.size() == 6) swpfileList.append(filenames.at(i));
 	}
 	
 	if (swpfileList.isEmpty()) { 
@@ -61,13 +54,42 @@ bool AnalyticAircraft::readSwpDir()
 	
 }
 
+bool AnalyticAircraft::processSweeps()
+{
+	double refLat = 16.5;
+	double refLon = 148.;
+	QTime refTime(23,0);
+	
+	// Resample an analytic field
+	if (getfileListsize()) {
+		for (int f = 0; f < getfileListsize(); ++f) {
+			if (load(f)) {
+				printf("\n\nProcessing file %d\n", f);
+				analyticTrack(refLat, refLon, refTime, beltrami);
+				resample_wind(refLat, refLon, beltrami);
+				recalculateAirborneAngles();
+				resample_wind(refLat, refLon, beltrami);
+				saveQCedSwp(f);
+			} else {
+				printf("\n\nError loading file %d\n", f);
+				return false;
+			}
+		} 	
+	} else {
+		std::cout << "No swp files exist in " << dataPath.dirName().toStdString() << "\n"; 
+		return false;
+	}
+		
+	return true;
+}
+
 /****************************************************************************************
  ** load : This function loads the information from an individual swp file given the index.
  ****************************************************************************************/
 bool AnalyticAircraft::load(const int& swpIndex)
 {
-	
-	swpfile.setFilename(getswpfileName(swpIndex));
+	QString filename = dataPath.absolutePath() + "/" + getswpfileName(swpIndex);
+	swpfile.setFilename(filename);
 	// Read in the swp file
 	if(swpfile.readSwpfile()) 
 		return true;
@@ -79,11 +101,10 @@ bool AnalyticAircraft::load(const int& swpIndex)
 /****************************************************************************************
  ** save : This function saves a modified swp file with suffix appended to the end.
  ****************************************************************************************/
-bool AnalyticAircraft::saveQCedSwp(const QString& suffix)
+bool AnalyticAircraft::saveQCedSwp(const int& swpIndex)
 {
-	
-	if (swpfile.writeSwpfile(suffix))
-		return true;
+	QString qcfilename = outPath.absolutePath() + "/" + getswpfileName(swpIndex) + "." + swpSuffix;
+	if (swpfile.writeSwpfile(qcfilename)) return true;
 	
 	return false;
 }
@@ -138,9 +159,9 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double z = radarAlt*1000;
 		double t = 0.;
 		double u, v, w;
-		if (analytic == 0) {
+		if (analytic == beltrami) {
 			BeltramiFlow(x, y, z, t, u, v, w);
-		} else if (analytic == 1) {
+		} else if (analytic == wrf) {
 			WrfResample(x, y, z, t, u, v, w);
 		}
 		aptr->lon = radarLon;
@@ -197,21 +218,14 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			// Take into account curvature of the earth
 			double relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(el)) - rEarth;
 			
-			/* double latrad = radarLat * Pi/180.0;
-			double fac_lat = 111.13209 - 0.56605 * cos(2.0 * latrad)
-			+ 0.00012 * cos(4.0 * latrad) - 0.000002 * cos(6.0 * latrad);
-			double fac_lon = 111.41513 * cos(latrad)
-			- 0.09455 * cos(3.0 * latrad) + 0.00012 * cos(5.0 * latrad);
-			double gateLon = radarLon + (relX/1000)/fac_lon;
-			double gateLat = radarLat + (relY/1000)/fac_lat; */
 			double x = radarX + relX - refX;
 			double y = radarY + relY - refY;
 			double z = relZ + radarAlt*1000;
 			double t = 0.;
 			double u, v, w;
-			if (analytic == 0) {
+			if (analytic == beltrami) {
 				BeltramiFlow(x, y, z, t, u, v, w);
-			} else if (analytic == 1) {
+			} else if (analytic == wrf) {
 				WrfResample(x, y, z, t, u, v, w);
 			}
 			
