@@ -49,9 +49,10 @@ private:
 	Dorade swpfile;
 	double Pi;
 	int analyticType;
+	int beamwidth;
 	
-	void BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w);
-	void WrfResample(double x, double y, double z, double t, double &u, double &v, double &w);
+	void BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w, double &dz);
+	void WrfResample(double x, double y, double z, double t, double &u, double &v, double &w, double &dz);
 
 };
 

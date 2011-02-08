@@ -26,7 +26,9 @@ AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const 
 	readSwpDir();
 	
 	analyticType = analytic;
-	Pi = acos(-1);	
+	Pi = acos(-1);
+	beamwidth=1.8;
+	
 }
 
 AnalyticAircraft::~AnalyticAircraft()
@@ -158,11 +160,11 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double y = radarY - refY;
 		double z = radarAlt*1000;
 		double t = 0.;
-		double u, v, w;
+		double u, v, w, dz;
 		if (analytic == beltrami) {
-			BeltramiFlow(x, y, z, t, u, v, w);
+			BeltramiFlow(x, y, z, t, u, v, w, dz);
 		} else if (analytic == wrf) {
-			WrfResample(x, y, z, t, u, v, w);
+			WrfResample(x, y, z, t, u, v, w, dz);
 		}
 		aptr->lon = radarLon;
 		aptr->lat = radarLat;
@@ -222,31 +224,83 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			double y = radarY + relY - refY;
 			double z = relZ + radarAlt*1000;
 			double t = 0.;
-			double u, v, w;
-			if (analytic == beltrami) {
-				BeltramiFlow(x, y, z, t, u, v, w);
-			} else if (analytic == wrf) {
-				WrfResample(x, y, z, t, u, v, w);
-			}
 			
-			// Dz proportional to W eventually, constant for now
+			double u, v, w, dz;
 			if ((z > -5000.0) and (z <= 20000.0)) {
-				refdata[n] = -20.0;
-				swdata[n] = 1.;
-				ncpdata[n] =1.;
-				veldata[n] = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+				if (analytic == beltrami) {
+					BeltramiFlow(x, y, z, t, u, v, w, dz);
+				} else if (analytic == wrf) {
+					WrfResample(x, y, z, t, u, v, w, dz);
+				}
+					
+				if (beamwidth < 0) {
+					refdata[n] = 10*log10(dz);
+					swdata[n] = 1.;
+					ncpdata[n] = 1.;
+					veldata[n] = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);									
+				} else {
+					// Loop over the width of the beam
+					double maxbeam = (beamwidth*3.)*Pi/180.;
+					double beamincr = maxbeam/20.;
+					// Circle in spherical plane to radar beam
+					double reftmp, veltmp, swtmp, weight;
+					reftmp = dz;
+					veltmp = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					swtmp = 0.0;
+					weight = 1.0;
+					for (double r=beamincr; r <= maxbeam; r += beamincr) {
+						for (double theta=0; theta < 360; theta += 10) {
+							double azmod = az + r*cos(theta * Pi / 180.);
+							double elmod = el + r*sin(theta * Pi / 180.);
+							relX = range*sin(azmod)*cos(elmod);
+							relY = range*cos(azmod)*cos(elmod);
+							relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(elmod)) - rEarth;
+							double beamaxis = r/(beamwidth*Pi/180.); 
+							// Gaussian beam
+							double power = exp(-(beamaxis*beamaxis)/1.443695);
+							
+							// Rectangular beam
+							//double power = (sin(2*Pi*beamaxis)/2*Pi*beamaxis)*(sin(2*Pi*beamaxis)/2*Pi*beamaxis);
+							
+							// Gnarly sidelobes
+							//double power = (sin(10*beamaxis)/sin(beamaxis));
+							//power = (power > -0.1) ? fabs(power) : 0.1;
+							
+							x = radarX + relX - refX;
+							y = radarY + relY - refY;
+							z = relZ + radarAlt*1000;
+							if (analytic == beltrami) {
+								BeltramiFlow(x, y, z, t, u, v, w, dz);
+							} else if (analytic == wrf) {
+								WrfResample(x, y, z, t, u, v, w, dz);
+							}
+							reftmp += dz*power;
+							double vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
+							veltmp += vr*power;
+							weight += power;	
+							double vrmean = veltmp/weight;
+							swtmp += power*(vr - vrmean)*(vr - vrmean);
+						}
+					}
+					refdata[n] = 10*log10(reftmp/weight);
+					swdata[n] = sqrt(swtmp/weight);
+					ncpdata[n] = 1.;
+					veldata[n] = veltmp/weight;
+					
+				}
 			} else {
 				refdata[n] = -32768.;
 				swdata[n] = -32768.;
 				ncpdata[n] = -32768.;
 				veldata[n] = -32768.;
 			}
+			
 
 		}
 	}
 }
 
-void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w)
+void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w, double &dz)
 {
 	double k = 2*Pi / 10000.; // Horizontal wavelengths
 	double l = k;
@@ -265,12 +319,15 @@ void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, doub
 						m*l*cos(k*(x-U*t))*sin(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	w = A*cos(k*(x-U*t))*cos(l*(y-V*t))*sin(m*z)*exp(-nu*wavenum*wavenum*t);
+	dz = 1.0;
 	if (z < 0.01) {
-		u = v = w = 0;
+		u = v = w = 0.0;
+		dz = 100000.0;
 	}
+	
 }
 
-void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double &u, double &v, double &w)
+void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double &u, double &v, double &w, double &dz)
 {
 
 	
