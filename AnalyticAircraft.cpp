@@ -27,7 +27,7 @@ AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const 
 	
 	analyticType = analytic;
 	Pi = acos(-1);
-	beamwidth=1.8;
+	beamwidth= -999.;
 	
 }
 
@@ -60,7 +60,7 @@ bool AnalyticAircraft::processSweeps()
 {
 	double refLat = 16.5;
 	double refLon = 148.;
-	QTime refTime(23,0);
+	QTime refTime(23,48);
 	
 	// Resample an analytic field
 	if (getfileListsize()) {
@@ -232,7 +232,12 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				} else if (analytic == wrf) {
 					WrfResample(x, y, z, t, u, v, w, dz);
 				}
-					
+				
+				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
+				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
+				    the calculation time significantly but gives a more realistic representation of the winds */
+				// beamwidth = 1.8;
+				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
 					swdata[n] = 1.;
