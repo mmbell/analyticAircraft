@@ -236,7 +236,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
-				// beamwidth = 1.8;
+				beamwidth = 1.8;
 				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
