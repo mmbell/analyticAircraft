@@ -60,7 +60,7 @@ bool AnalyticAircraft::processSweeps()
 {
 	double refLat = 16.5;
 	double refLon = 148.;
-	QTime refTime(23,0);
+	QTime refTime(23,48);
 	
 	// Resample an analytic field
 	if (getfileListsize()) {

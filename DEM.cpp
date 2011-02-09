@@ -8,16 +8,13 @@
  */
 
 #include "DEM.h"
-#include "geotiff.h"
 #include "xtiffio.h"
-#include "geo_normalize.h"
 #include "geo_simpletags.h"
 #include "geovalues.h"
-#include "tiffio.h"
 #include "cpl_serv.h"
 #include <stdio.h>
 #include <string.h>
-
+#include <GeographicLib/TransverseMercatorExact.hpp>
 
 DEM::DEM()
 {
@@ -27,18 +24,33 @@ DEM::~DEM()
 {
 }
 
+int DEM::getElevation(const double& lat, const double& lon)
+{
+	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
+	double refX, refY, pointX, pointY;
+	tm.Forward(refLon, refLat, refLon, refX, refY);	
+	tm.Forward(refLon, lat, lon, pointX, pointY);
+	int xIndex = (int)(pointX - refX)/dx;
+	int yIndex = (int)(pointY - refY)/dy;
+	int pixel = yIndex*xsize + xIndex;
+	if ((pixel >= 0) and (pixel < npixels)) {
+		return elevations[pixel];
+	} 
+	
+	return -999;
+	
+}
+
 bool DEM::readDem(char* fname) 
 {
 
-    char        *outfile = NULL;
+    char    *outfile = NULL;
     TIFF 	*tif=(TIFF*)0;  /* TIFF-level descriptor */
     GTIF	*gtif=(GTIF*)0; /* GeoKey-level descriptor */
-    int		i, j, norm_print_flag = 0, proj4_print_flag = 0;
-    int		tfw_flag = 0, inv_flag = 0, dec_flag = 1;
-    int         st_test_flag = 0;
-    size_t npixels;
-    int16* elevations;
-    int x, y, skip;
+    int	norm_print_flag = 0, proj4_print_flag = 0;
+    int	inv_flag = 0, dec_flag = 1;
+    int      st_test_flag = 0;
+    unsigned int x, y, skip;
     GTIFDefn	defn;
     FILE* out;
 
@@ -71,8 +83,6 @@ bool DEM::readDem(char* fname)
 	
     if( GTIFGetDefn( gtif, &defn ) )
 	{
-		uint32		xsize, ysize;
-        
 		printf( "\n" );
 		GTIFPrintDefn( &defn, stdout );
 		
@@ -96,13 +106,14 @@ bool DEM::readDem(char* fname)
 		GTIFImageToPCS( gtif, &originx, &originy);
 		int lat = (int)originy*1000;
 		int lon = (int)originx*1000;
+		refLat = originx;
+		refLon = originy;
 		int xmin = 0;
 		int ymin = 0;
 		int nx = xsize/skip + 1;
 		int ny = ysize/skip + 1;
-		int dx = 30 * skip;
-		int dy = 30 * skip;
-		int16 elev = 0;
+		dx = 30 * skip;
+		dy = 30 * skip;
 		fprintf(out, "%12s%12s%7d%7d%7d%7d%7d%7d%7d%7d\n",
 				project, yymmdd, lat, lon, xmin, ymin, nx, ny, dx,dy);
 		npixels = xsize * ysize;
@@ -134,7 +145,7 @@ bool DEM::readDem(char* fname)
 		
 	}
     
-Success:
+
     GTIFFree(gtif);
     if( st_test_flag )
         ST_Destroy( (ST_TIFF *) tif );
