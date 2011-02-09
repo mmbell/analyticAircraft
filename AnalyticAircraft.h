@@ -13,6 +13,7 @@
 #include "Dorade.h"
 #include <QList>
 #include <QDir>
+#include "DEM.h"
 
 class AnalyticAircraft
 {
@@ -51,8 +52,10 @@ private:
 	int analyticType;
 	int beamwidth;
 	
-	void BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w, double &dz);
-	void WrfResample(double x, double y, double z, double t, double &u, double &v, double &w, double &dz);
+	DEM asterDEM;
+	
+	void BeltramiFlow(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
+	void WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 
 };
 

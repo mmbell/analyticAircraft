@@ -23,13 +23,15 @@ public:
 	
 	bool readDem(char* fname);
 	int getElevation(const double& lat, const double& lon);
+	bool dumpAscii(int skip);
 	
 private:
 	int GTIFReportACorner( GTIF *gtif, GTIFDefn *defn, FILE * fp_out,
 						const char * corner_name,
 						double x, double y, int inv_flag, int dec_flag );
 	void GTIFPrintCorners( GTIF *, GTIFDefn *, FILE *, int, int, int, int );
-	
+
+	char * demFilename;
 	size_t npixels;
 	uint32 xsize, ysize;
 	int16* elevations;

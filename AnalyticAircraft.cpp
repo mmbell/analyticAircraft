@@ -58,9 +58,14 @@ bool AnalyticAircraft::readSwpDir()
 
 bool AnalyticAircraft::processSweeps()
 {
-	double refLat = 16.5;
-	double refLon = 148.;
-	QTime refTime(23,48);
+	// Set these parameters!
+	double refLat = 46.0435;
+	double refLon = 10.39;
+	QTime refTime(23,47);
+	QString demfile = "ASTGTM_N46E010_dem.tif";
+	
+	// Load the DEM
+	if(!asterDEM.readDem(demfile.toAscii().data())) return false;
 	
 	// Resample an analytic field
 	if (getfileListsize()) {
@@ -68,7 +73,6 @@ bool AnalyticAircraft::processSweeps()
 			if (load(f)) {
 				printf("\n\nProcessing file %d\n", f);
 				analyticTrack(refLat, refLon, refTime, beltrami);
-				resample_wind(refLat, refLon, beltrami);
 				recalculateAirborneAngles();
 				resample_wind(refLat, refLon, beltrami);
 				saveQCedSwp(f);
@@ -151,20 +155,27 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		QTime rayTime(ryptr->hour, ryptr->min, ryptr->sec, ryptr->msec);
 		int msecElapsed = refTime.msecsTo(rayTime);
 
+		double radarLat, radarLon,radarAlt;
 		double radarX = ew_gspeed * msecElapsed/1000.0;
 		double radarY = ns_gspeed * msecElapsed/1000.0;
-		double radarLat, radarLon,radarAlt;
+		radarAlt = 6.0;
+		
+		// If the aircraft is below the ground there is a problem
 		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
-		radarAlt = 3.0;
+		int h = asterDEM.getElevation(radarLat, radarLon);
+		if (radarAlt*1000 < h) {
+			std::cout << "Problem with heights! Aircraft below ground\n";
+		}
+
 		double x = radarX - refX;
 		double y = radarY - refY;
 		double z = radarAlt*1000;
 		double t = 0.;
 		double u, v, w, dz;
 		if (analytic == beltrami) {
-			BeltramiFlow(x, y, z, t, u, v, w, dz);
+			BeltramiFlow(x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == wrf) {
-			WrfResample(x, y, z, t, u, v, w, dz);
+			WrfResample(x, y, z, t, h, u, v, w, dz);
 		}
 		aptr->lon = radarLon;
 		aptr->lat = radarLat;
@@ -224,13 +235,19 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			double y = radarY + relY - refY;
 			double z = relZ + radarAlt*1000;
 			double t = 0.;
-			
+						
 			double u, v, w, dz;
 			if ((z > -5000.0) and (z <= 20000.0)) {
+				
+				// Check the altitude
+				double absLat, absLon;
+				tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
+				int h = asterDEM.getElevation(absLat, absLon);
+				
 				if (analytic == beltrami) {
-					BeltramiFlow(x, y, z, t, u, v, w, dz);
+					BeltramiFlow(x, y, z, t, h, u, v, w, dz);
 				} else if (analytic == wrf) {
-					WrfResample(x, y, z, t, u, v, w, dz);
+					WrfResample(x, y, z, t, h, u, v, w, dz);
 				}
 					
 				if (beamwidth < 0) {
@@ -269,10 +286,15 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							x = radarX + relX - refX;
 							y = radarY + relY - refY;
 							z = relZ + radarAlt*1000;
+							// Check the altitude
+							double absLat, absLon;
+							tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
+							int h = asterDEM.getElevation(absLat, absLon);
+							
 							if (analytic == beltrami) {
-								BeltramiFlow(x, y, z, t, u, v, w, dz);
+								BeltramiFlow(x, y, z, t, h, u, v, w, dz);
 							} else if (analytic == wrf) {
-								WrfResample(x, y, z, t, u, v, w, dz);
+								WrfResample(x, y, z, t, h, u, v, w, dz);
 							}
 							reftmp += dz*power;
 							double vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
@@ -300,7 +322,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 	}
 }
 
-void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, double &u, double &v, double &w, double &dz)
+void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
 	double k = 2*Pi / 10000.; // Horizontal wavelengths
 	double l = k;
@@ -320,14 +342,14 @@ void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, doub
 	*exp(-nu*wavenum*wavenum*t);
 	w = A*cos(k*(x-U*t))*cos(l*(y-V*t))*sin(m*z)*exp(-nu*wavenum*wavenum*t);
 	dz = 1.0;
-	if (z < 0.01) {
+	if (z < (h+1)) {
 		u = v = w = 0.0;
 		dz = 100000.0;
 	}
 	
 }
 
-void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double &u, double &v, double &w, double &dz)
+void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
 
 	
