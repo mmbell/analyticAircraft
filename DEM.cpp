@@ -8,52 +8,54 @@
  */
 
 #include "DEM.h"
-#include "geotiff.h"
 #include "xtiffio.h"
-#include "geo_normalize.h"
 #include "geo_simpletags.h"
 #include "geovalues.h"
-#include "tiffio.h"
 #include "cpl_serv.h"
 #include <stdio.h>
 #include <string.h>
-
+#include <GeographicLib/TransverseMercatorExact.hpp>
 
 DEM::DEM()
 {
+	dx = dy = 30;
 }
 
 DEM::~DEM()
 {
 }
 
+int DEM::getElevation(const double& lat, const double& lon)
+{
+	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
+	double refX, refY, pointX, pointY;
+	tm.Forward(refLon, refLat, refLon, refX, refY);	
+	tm.Forward(refLon, lat, lon, pointX, pointY);
+	int xIndex = (int)(pointX - refX)/dx;
+	int yIndex = (int)(pointY - refY)/dy;
+	int pixel = yIndex*xsize + xIndex;
+	if ((pixel >= 0) and (pixel < npixels)) {
+		return elevations[pixel];
+	} 
+	
+	return -999;
+	
+}
+
 bool DEM::readDem(char* fname) 
 {
 
-    char        *outfile = NULL;
+    demFilename = fname;
     TIFF 	*tif=(TIFF*)0;  /* TIFF-level descriptor */
     GTIF	*gtif=(GTIF*)0; /* GeoKey-level descriptor */
-    int		i, j, norm_print_flag = 0, proj4_print_flag = 0;
-    int		tfw_flag = 0, inv_flag = 0, dec_flag = 1;
-    int         st_test_flag = 0;
-    size_t npixels;
-    int16* elevations;
-    int x, y, skip;
+    int	proj4_print_flag = 0;
+    int	inv_flag = 0, dec_flag = 1;
+    int      st_test_flag = 0;
     GTIFDefn	defn;
-    FILE* out;
 
-    skip = 5;
-	
     /*
      * Open the file, read the GeoTIFF information, and print some info to stdout. 
      */
-    int flength = strlen(fname);
-    outfile = (char *) malloc(flength);
-    strncpy(outfile,fname,flength-4);
-    strcat(outfile, ".asc\0");
-    out = fopen(outfile, "w");
-    printf("Writing to %s\n\n",outfile);
-    free(outfile);
 	
     tif=XTIFFOpen(fname,"r");
     if (!tif) goto failure;
@@ -71,8 +73,6 @@ bool DEM::readDem(char* fname)
 	
     if( GTIFGetDefn( gtif, &defn ) )
 	{
-		uint32		xsize, ysize;
-        
 		printf( "\n" );
 		GTIFPrintDefn( &defn, stdout );
 		
@@ -90,21 +90,11 @@ bool DEM::readDem(char* fname)
 		printf("Orientation:%d\n",orient);
 		
 		GTIFPrintCorners( gtif, &defn, stdout, xsize, ysize, inv_flag, dec_flag );
-		const char* project = "ASTERGDEM";
-		const char* yymmdd = "090629";
-		double originx, originy;
+		double originx = 0.0;
+		double originy = ysize;
 		GTIFImageToPCS( gtif, &originx, &originy);
-		int lat = (int)originy*1000;
-		int lon = (int)originx*1000;
-		int xmin = 0;
-		int ymin = 0;
-		int nx = xsize/skip + 1;
-		int ny = ysize/skip + 1;
-		int dx = 30 * skip;
-		int dy = 30 * skip;
-		int16 elev = 0;
-		fprintf(out, "%12s%12s%7d%7d%7d%7d%7d%7d%7d%7d\n",
-				project, yymmdd, lat, lon, xmin, ymin, nx, ny, dx,dy);
+		refLat = originy;
+		refLon = originx;
 		npixels = xsize * ysize;
 		int16* buf;
 		tsample_t sample;
@@ -113,42 +103,72 @@ bool DEM::readDem(char* fname)
 		buf = (int16*) _TIFFmalloc(nbytes);
 		elevations = (int16*) _TIFFmalloc(npixels * sizeof (int16));
 		if (elevations != NULL) {
-			for( y = 0; y < ysize; y++ )
+			for(unsigned int y = 0; y < ysize; y++ )
 			{
 				uint32 row = ysize - 1 - y;
 				TIFFReadScanline(tif, buf, row, sample);
-				for( x = 0; x < xsize; x++ ) 
+				for(unsigned int x = 0; x < xsize; x++ ) 
 				{
 					elevations[y*xsize + x] = buf[x];
 				}
 			}	    
 			_TIFFfree(buf);
 		}
-		for( y = 0; y < ysize; y+=skip ) {
-			for( x = 0; x < xsize; x+=skip ) {
-				fprintf(out, "%6d", elevations[y*xsize + x]);
-			}
-			fprintf(out, "\n");
-		}
 		_TIFFfree(elevations);
 		
 	}
     
-Success:
+
     GTIFFree(gtif);
     if( st_test_flag )
         ST_Destroy( (ST_TIFF *) tif );
     else
         XTIFFClose(tif);
     GTIFDeaccessCSV();
-    return 0;
+    return true;
 	
 failure:
     fprintf(stderr,"failure in listgeo\n");
     if (tif) XTIFFClose(tif);
     if (gtif) GTIFFree(gtif);
     GTIFDeaccessCSV();
-    return 1;
+    return false;
+}
+
+bool DEM::dumpAscii(int skip)
+{
+	char    *outfile = NULL;
+    unsigned int x, y;
+    FILE* out;
+    int flength = strlen(demFilename);
+
+	outfile = (char *) malloc(flength);
+	strncpy(outfile,demFilename,flength-4);
+	strcat(outfile, ".asc\0");
+	out = fopen(outfile, "w");
+	printf("Writing to %s\n\n",outfile);
+	free(outfile);
+	
+	const char* project = "ASTERGDEM";
+	const char* yymmdd = "090629";
+	int lat = (int)refLat*1000;
+	int lon = (int)refLon*1000;
+	int xmin = 0;
+	int ymin = 0;
+	int nx = xsize/skip + 1;
+	int ny = ysize/skip + 1;
+	int dxthin = dx * skip;
+	int dythin = dx * skip;
+	fprintf(out, "%12s%12s%7d%7d%7d%7d%7d%7d%7d%7d\n",
+			project, yymmdd, lat, lon, xmin, ymin, nx, ny, dxthin,dythin);
+	
+	for( y = 0; y < ysize; y+=skip ) {
+		for( x = 0; x < xsize; x+=skip ) {
+			fprintf(out, "%6d", elevations[y*xsize + x]);
+		}
+		fprintf(out, "\n");
+	}
+	return true;
 }
 
 int DEM::GTIFReportACorner( GTIF *gtif, GTIFDefn *defn, FILE * fp_out,
