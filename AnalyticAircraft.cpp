@@ -252,6 +252,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				if (analytic == beltrami) {
 					double vwavelength = 32000.;
 					double utmp, vtmp, wtmp;
+					u = v = w = 0.0;
 					for (int wl = 2; wl < 17; wl = wl*2) {
 						double hwavelength = wl*1000.;
 						BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, utmp, vtmp, wtmp, dz);
