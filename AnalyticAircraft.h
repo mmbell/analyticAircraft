@@ -54,7 +54,7 @@ private:
 	
 	DEM asterDEM;
 	
-	void BeltramiFlow(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
+	void BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 	void WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 
 };

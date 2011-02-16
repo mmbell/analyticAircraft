@@ -24,6 +24,7 @@ public:
 	bool readDem(char* fname);
 	int getElevation(const double& lat, const double& lon);
 	bool dumpAscii(int skip);
+	int getMaxElevation();
 	
 private:
 	int GTIFReportACorner( GTIF *gtif, GTIFDefn *defn, FILE * fp_out,

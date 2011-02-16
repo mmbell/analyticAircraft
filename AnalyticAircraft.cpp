@@ -60,10 +60,10 @@ bool AnalyticAircraft::processSweeps()
 {
 
 	// Set these parameters!
-	double refLat = 46.0435;
-	double refLon = 10.39;
-	QTime refTime(23,47);
-	QString demfile = "ASTGTM_N46E010_dem.tif";
+	double refLat = 16.5;
+	double refLon = 148.0;
+	QTime refTime(23,48);
+	QString demfile = "ASTGTM_N16E146_dem.tif";
 	
 	// Load the DEM
 	if(!asterDEM.readDem(demfile.toAscii().data())) return false;
@@ -159,7 +159,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double radarLat, radarLon,radarAlt;
 		double radarX = ew_gspeed * msecElapsed/1000.0;
 		double radarY = ns_gspeed * msecElapsed/1000.0;
-		radarAlt = 6.0;
+		radarAlt = 3.0;
 		
 		// If the aircraft is below the ground there is a problem
 		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
@@ -173,8 +173,10 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double z = radarAlt*1000;
 		double t = 0.;
 		double u, v, w, dz;
+		double hwavelength = 10000.;
+		double vwavelength = 32000.;
 		if (analytic == beltrami) {
-			BeltramiFlow(x, y, z, t, h, u, v, w, dz);
+			BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == wrf) {
 			WrfResample(x, y, z, t, h, u, v, w, dz);
 		}
@@ -206,7 +208,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
 	double refX, refY;
 	tm.Forward(refLon, refLat, refLon, refX, refY);
-							 
+	int maxElevation = asterDEM.getMaxElevation();
+	
 	for (int i=0; i < swpfile.getNumRays(); i++) {
 		float az = swpfile.getAzimuth(i)*Pi/180.;
 		float el = swpfile.getElevation(i)*Pi/180.;
@@ -224,12 +227,9 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 
 		for (int n=0; n < swpfile.getNumGates(); n++) {
 			float range = gatesp[n];
-			//float dz = pow(10.0,(refdata[g]*0.1));
-			//if(veldata[n] == -32768.) continue;
 			double relX = range*sin(az)*cos(el);
 			double relY = range*cos(az)*cos(el);
 			double rEarth = 6371000;
-			// Take into account curvature of the earth
 			double relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(el)) - rEarth;
 			
 			double x = radarX + relX - refX;
@@ -238,15 +238,27 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			double t = 0.;
 						
 			double u, v, w, dz;
-			if ((z > -5000.0) and (z <= 20000.0)) {
+			if ((z > -1000.0) and (z <= 20000.0)) {
 				
-				// Check the altitude
-				double absLat, absLon;
-				tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
-				int h = asterDEM.getElevation(absLat, absLon);
-				
+				// Check the altitude if the beam is pointing downward
+				double absLat, absLon, h;
+				if ((el <= 0) and (z < maxElevation)) {
+					tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
+					h = asterDEM.getElevation(absLat, absLon);
+					if (h < 0) h=0;
+				} else {
+					h = 0;
+				}
 				if (analytic == beltrami) {
-					BeltramiFlow(x, y, z, t, h, u, v, w, dz);
+					double vwavelength = 32000.;
+					double utmp, vtmp, wtmp;
+					for (int wl = 2; wl < 17; wl = wl*2) {
+						double hwavelength = wl*1000.;
+						BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, utmp, vtmp, wtmp, dz);
+						u+=utmp;
+						v+=vtmp;
+						w+=wtmp;
+					}
 				} else if (analytic == wrf) {
 					WrfResample(x, y, z, t, h, u, v, w, dz);
 				}
@@ -254,7 +266,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
-				beamwidth = 1.8;
+				//beamwidth = 1.8;
 				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
@@ -264,7 +276,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				} else {
 					// Loop over the width of the beam
 					double maxbeam = (beamwidth*3.)*Pi/180.;
-					double beamincr = maxbeam/20.;
+					double beamincr = maxbeam/10.;
 					// Circle in spherical plane to radar beam
 					double reftmp, veltmp, swtmp, weight;
 					reftmp = dz;
@@ -292,13 +304,19 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							x = radarX + relX - refX;
 							y = radarY + relY - refY;
 							z = relZ + radarAlt*1000;
-							// Check the altitude
-							double absLat, absLon;
-							tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
-							int h = asterDEM.getElevation(absLat, absLon);
-							
+							// Check the altitude if the beam is pointing downward
+							double absLat, absLon, h;
+							if (el <= 0) {
+								tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
+								h = asterDEM.getElevation(absLat, absLon);
+								if (h < 0) h=0;
+							} else {
+								h = 0;
+							}
+							double hwavelength = 10000.;
+							double vwavelength = 32000.;
 							if (analytic == beltrami) {
-								BeltramiFlow(x, y, z, t, h, u, v, w, dz);
+								BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 							} else if (analytic == wrf) {
 								WrfResample(x, y, z, t, h, u, v, w, dz);
 							}
@@ -328,16 +346,16 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 	}
 }
 
-void AnalyticAircraft::BeltramiFlow(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
+void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
-	double k = 2*Pi / 10000.; // Horizontal wavelengths
+	double k = 2*Pi / hwavelength; // Horizontal wavelengths
 	double l = k;
-	double m = 2*Pi / 32000.;
+	double m = 2*Pi / vwavelength;
 	double A = 10.; // Peak Vertical velocity
 	double amp = A / (k*k + l*l);
 	double wavenum = sqrt(k*k + l*l + m*m);
-	double U = 10.;
-	double V = 10.;
+	double U = 0.;
+	double V = 0.;
 	double nu = 15.11e-6;
 	
 	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 

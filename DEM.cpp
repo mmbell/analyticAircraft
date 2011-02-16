@@ -42,6 +42,16 @@ int DEM::getElevation(const double& lat, const double& lon)
 	
 }
 
+int DEM::getMaxElevation()
+{
+	int max = -1;
+	for (int n = 0; n < npixels; ++n) {
+		if (elevations[n] > max) max = elevations[n];
+	}
+	
+	return max;
+}
+
 bool DEM::readDem(char* fname) 
 {
 
