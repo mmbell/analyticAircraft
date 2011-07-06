@@ -32,6 +32,7 @@ public:
 	void recalculateAirborneAngles();
 
 	void analyticTrack(double refLat, double refLon, QTime refTime, int analytic);
+	void addNavError(double refLat, double refLon, QTime refTime, int analytic);
 	void resample_wind(double refLat, double refLon, int analytic);
 
 	bool processSweeps();

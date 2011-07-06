@@ -76,6 +76,7 @@ bool AnalyticAircraft::processSweeps()
 				analyticTrack(refLat, refLon, refTime, beltrami);
 				recalculateAirborneAngles();
 				resample_wind(refLat, refLon, beltrami);
+				//addNavError(refLat, refLon, refTime, beltrami);
 				saveQCedSwp(f);
 			} else {
 				printf("\n\nError loading file %d\n", f);
@@ -200,6 +201,52 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	
 }
 
+void AnalyticAircraft::addNavError(double refLat, double refLon, QTime refTime, int analytic)
+{
+	
+	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
+		
+	double ns_gspeed = 120.0;
+	double ew_gspeed = 0.0;
+	double refX, refY;
+	tm.Forward(refLon, refLat, refLon, refX, refY);
+	for (int i=0; i < swpfile.getNumRays(); i++) {		
+		asib_info* aptr = swpfile.getAircraftBlock(i);
+		ryib_info* ryptr = swpfile.getRyibBlock(i);
+		
+		QTime rayTime(ryptr->hour, ryptr->min, ryptr->sec, ryptr->msec);
+		int msecElapsed = refTime.msecsTo(rayTime);
+		
+		double radarLat, radarLon,radarAlt;
+		double radarX = ew_gspeed * msecElapsed/1000.0;
+		double radarY = ns_gspeed * msecElapsed/1000.0;
+		radarAlt = 3.0;
+		
+		// If the aircraft is below the ground there is a problem
+		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
+		int h = asterDEM.getElevation(radarLat, radarLon);
+		if (radarAlt*1000 < h) {
+			std::cout << "Problem with heights! Aircraft below ground\n";
+		}
+		
+		aptr->lon = radarLon;
+		aptr->lat = radarLat;
+		aptr->alt_msl= radarAlt+0.2;
+		aptr->alt_agl= radarAlt+0.2;
+		aptr->ew_gspeed= ew_gspeed;
+		aptr->ns_gspeed = ns_gspeed+1.0;
+		aptr->vert_vel= 0.;
+		aptr->head= 0.;
+		aptr->roll= 1.5;
+		aptr->pitch= 0.5;
+		aptr->drift= 0.2;
+		aptr->head_change= 0.;
+		aptr->pitch_change= 0.;
+	}
+	
+}
+
+
 void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 {
 
@@ -209,6 +256,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 	double refX, refY;
 	tm.Forward(refLon, refLat, refLon, refX, refY);
 	int maxElevation = asterDEM.getMaxElevation();
+	float nyquist = swpfile.getNyquistVelocity();
 	
 	for (int i=0; i < swpfile.getNumRays(); i++) {
 		float az = swpfile.getAzimuth(i)*Pi/180.;
@@ -217,7 +265,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 		float radarLon = swpfile.getRadarLon(i);
 		float radarAlt = swpfile.getRadarAlt(i);		
 		float* refdata = swpfile.getRayData(i, "ZZ");
-		float* veldata = swpfile.getRayData(i, "VV");	
+		float* veldata = swpfile.getRayData(i, "VR");
+		float* velcorr = swpfile.getRayData(i, "VV");
 		float* swdata = swpfile.getRayData(i, "SW");
 		float* ncpdata = swpfile.getRayData(i, "NCP");
 		QDateTime rayTime = swpfile.getRayTime(i);
@@ -238,7 +287,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			double t = 0.;
 						
 			double u, v, w, dz;
-			if ((z > -1000.0) and (z <= 20000.0)) {
+			if ((z > -5000.0) and (z <= 20000.0)) {
 				
 				// Check the altitude if the beam is pointing downward
 				double absLat, absLon, h;
@@ -253,13 +302,17 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					double vwavelength = 32000.;
 					double utmp, vtmp, wtmp;
 					u = v = w = 0.0;
-					for (int wl = 2; wl < 17; wl = wl*2) {
+					for (int wl = 8; wl < 9; wl = wl*2) {
 						double hwavelength = wl*1000.;
 						BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, utmp, vtmp, wtmp, dz);
 						u+=utmp;
 						v+=vtmp;
 						w+=wtmp;
 					}
+					/* double k = 2*Pi/(4000.);
+					u += 5*(sin(k*x)*cos(k*y));
+					v += -5*(cos(k*x)*sin(k*y)); */
+					
 				} else if (analytic == wrf) {
 					WrfResample(x, y, z, t, h, u, v, w, dz);
 				}
@@ -267,21 +320,49 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
-				//beamwidth = 1.8;
+				beamwidth = -999.;
 				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
 					swdata[n] = 1.;
 					ncpdata[n] = 1.;
-					veldata[n] = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);									
+					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					velcorr[n] = vr;
+					
+					// Add in the aircraft motion
+					v -= 120.;
+					vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					if (fabs(vr) > nyquist) {
+						// Fold data back into Nyquist range
+						while (vr > nyquist) {
+							vr -= nyquist;
+						}
+						while (vr < -nyquist) {
+							vr += nyquist;
+						}
+					}
+					veldata[n] = vr;
 				} else {
 					// Loop over the width of the beam
 					double maxbeam = (beamwidth*3.)*Pi/180.;
 					double beamincr = maxbeam/10.;
 					// Circle in spherical plane to radar beam
-					double reftmp, veltmp, swtmp, weight;
+					double reftmp, veltmp, velcorrtmp, swtmp, weight;
 					reftmp = dz;
-					veltmp = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					velcorrtmp = vr;
+					v -= 120.;
+					vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					if (fabs(vr) > nyquist) {
+						// Fold data back into Nyquist range
+						while (vr > nyquist) {
+							vr -= nyquist;
+						}
+						while (vr < -nyquist) {
+							vr += nyquist;
+						}
+					}					
+					veltmp = vr;
 					swtmp = 0.0;
 					weight = 1.0;
 					for (double r=beamincr; r <= maxbeam; r += beamincr) {
@@ -293,10 +374,10 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(elmod)) - rEarth;
 							double beamaxis = r/(beamwidth*Pi/180.); 
 							// Gaussian beam
-							double power = exp(-(beamaxis*beamaxis)/1.443695);
+							//double power = exp(-(beamaxis*beamaxis)/1.443695);
 							
 							// Rectangular beam
-							//double power = (sin(2*Pi*beamaxis)/2*Pi*beamaxis)*(sin(2*Pi*beamaxis)/2*Pi*beamaxis);
+							double power = (sin(2*Pi*beamaxis)/2*Pi*beamaxis)*(sin(2*Pi*beamaxis)/2*Pi*beamaxis);
 							
 							// Gnarly sidelobes
 							//double power = (sin(10*beamaxis)/sin(beamaxis));
@@ -322,7 +403,20 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 								WrfResample(x, y, z, t, h, u, v, w, dz);
 							}
 							reftmp += dz*power;
-							double vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
+							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
+							velcorrtmp += vr*power;
+							// Add in the aircraft motion
+							v -= 120.;
+							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
+							if (fabs(vr) > nyquist) {
+								// Fold data back into Nyquist range
+								while (vr > nyquist) {
+									vr -= nyquist;
+								}
+								while (vr < -nyquist) {
+									vr += nyquist;
+								}
+							}
 							veltmp += vr*power;
 							weight += power;	
 							double vrmean = veltmp/weight;
@@ -333,6 +427,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					swdata[n] = sqrt(swtmp/weight);
 					ncpdata[n] = 1.;
 					veldata[n] = veltmp/weight;
+					velcorr[n] = velcorrtmp/weight;
 					
 				}
 			} else {
@@ -340,6 +435,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				swdata[n] = -32768.;
 				ncpdata[n] = -32768.;
 				veldata[n] = -32768.;
+				velcorr[n] = -32768.;
 			}
 			
 
@@ -355,8 +451,8 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	double A = 10.; // Peak Vertical velocity
 	double amp = A / (k*k + l*l);
 	double wavenum = sqrt(k*k + l*l + m*m);
-	double U = 0.;
-	double V = 0.;
+	double U = 10.;
+	double V = 10.;
 	double nu = 15.11e-6;
 	
 	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 

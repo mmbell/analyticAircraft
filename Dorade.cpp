@@ -332,6 +332,11 @@ float Dorade::getBeamwidthDeg()
 	return bw;
 }
 
+float Dorade::getNyquistVelocity()
+{
+	return rptr->unambig_vel;
+}
+
 QDateTime Dorade::getRayTime(int& ray)
 {
 	int year = vptr->year;
