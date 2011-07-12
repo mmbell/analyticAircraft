@@ -1,3 +1,6 @@
+/* Copyright 2011 Michael Bell */
+/* Code taken from soloii distribution, copyright UCAR/NCAR */
+
 #ifndef READDORADE_H
 #define READDORADE_H
 
@@ -14,7 +17,7 @@
 #define PARM_DESC_LEN 40
 #define PARM_UNIT_LEN 8
 #define THRESHOLD_FLD_LEN 8
-#define MAX_BEAMS 1300 
+#define MAX_BEAMS 1000 
 #define MAX_GATES 1500
 #define MAX_KEYS 8
 #define SIGN16 0x8000
