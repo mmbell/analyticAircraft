@@ -1,8 +1,8 @@
 /*
  *  DEM.cpp
- *  analyticAircraft
  *
  *  Created by Michael Bell on 2/4/11.
+ *  Based on example code from GeoTIFF library
  *  Copyright 2011. All rights reserved.
  *
  */

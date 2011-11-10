@@ -1,6 +1,5 @@
 /*
  *  Dorade.h
- *  tcvar
  *
  * Copyright 2011 Michael Bell
  *  All rights reserved.

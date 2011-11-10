@@ -3,3 +3,4 @@ windfields/*
 .DS_Store
 analyticAircraft.xcodeproj/*
 profile
+Info.plist
