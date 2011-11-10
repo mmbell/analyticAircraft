@@ -73,10 +73,11 @@ bool AnalyticAircraft::processSweeps()
 		for (int f = 0; f < getfileListsize(); ++f) {
 			if (load(f)) {
 				printf("\n\nProcessing file %d\n", f);
+				// Create an analytic track, then add some navigation errors
 				analyticTrack(refLat, refLon, refTime, beltrami);
 				recalculateAirborneAngles();
 				resample_wind(refLat, refLon, beltrami);
-				//addNavError(refLat, refLon, refTime, beltrami);
+				addNavError(refLat, refLon, refTime, beltrami);
 				saveQCedSwp(f);
 			} else {
 				printf("\n\nError loading file %d\n", f);
@@ -197,6 +198,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		aptr->vert_wind= w;
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
+		aptr->tilt_ang=15.6;
 	}
 	
 }
@@ -237,9 +239,10 @@ void AnalyticAircraft::addNavError(double refLat, double refLon, QTime refTime, 
 		aptr->ns_gspeed = ns_gspeed+1.0;
 		aptr->vert_vel= 0.;
 		aptr->head= 0.;
-		aptr->roll= 1.5;
-		aptr->pitch= 0.5;
+		aptr->roll= 1.0;
+		aptr->pitch= 1.5;
 		aptr->drift= 0.2;
+		//aptr->tilt_ang -= 0.3;
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
 	}
@@ -302,7 +305,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					double vwavelength = 32000.;
 					double utmp, vtmp, wtmp;
 					u = v = w = 0.0;
-					for (int wl = 8; wl < 9; wl = wl*2) {
+					for (int wl = 16; wl < 17; wl = wl*2) {
 						double hwavelength = wl*1000.;
 						BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, utmp, vtmp, wtmp, dz);
 						u+=utmp;
@@ -320,7 +323,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
-				beamwidth = -999.;
+				beamwidth = 1.8;
 				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
@@ -330,40 +333,45 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					velcorr[n] = vr;
 					
 					// Add in the aircraft motion
-					v -= 120.;
-					vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					double aircraft_vr = swpfile.getAircraftVelocity(i);
+					vr -= aircraft_vr;
 					if (fabs(vr) > nyquist) {
 						// Fold data back into Nyquist range
 						while (vr > nyquist) {
-							vr -= nyquist;
+							vr -= 2*nyquist;
 						}
 						while (vr < -nyquist) {
-							vr += nyquist;
+							vr += 2*nyquist;
 						}
 					}
-					veldata[n] = vr;
+					
+					// Add some random noise
+					double dznoise = rand() % ((int)refdata[n] + 20) + 1;
+					double noise = 1/(dznoise) * ((rand() % 2) - 1);
+					veldata[n] = vr + noise;
 				} else {
 					// Loop over the width of the beam
 					double maxbeam = (beamwidth*3.)*Pi/180.;
 					double beamincr = maxbeam/10.;
 					// Circle in spherical plane to radar beam
-					double reftmp, veltmp, velcorrtmp, swtmp, weight;
+					double reftmp, veltmp, velcorrtmp, swtmp, ncptmp, weight;
 					reftmp = dz;
 					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
 					velcorrtmp = vr;
-					v -= 120.;
-					vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+					double aircraft_vr = swpfile.getAircraftVelocity(i);
+					vr -= aircraft_vr;
 					if (fabs(vr) > nyquist) {
 						// Fold data back into Nyquist range
 						while (vr > nyquist) {
-							vr -= nyquist;
+							vr -= 2*nyquist;
 						}
 						while (vr < -nyquist) {
-							vr += nyquist;
+							vr += 2*nyquist;
 						}
 					}					
 					veltmp = vr;
 					swtmp = 0.0;
+					ncptmp = 1.0;
 					weight = 1.0;
 					for (double r=beamincr; r <= maxbeam; r += beamincr) {
 						for (double theta=0; theta < 360; theta += 10) {
@@ -395,7 +403,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							} else {
 								h = 0;
 							}
-							double hwavelength = 10000.;
+							double hwavelength = 16000.;
 							double vwavelength = 32000.;
 							if (analytic == beltrami) {
 								BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
@@ -406,29 +414,42 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
 							velcorrtmp += vr*power;
 							// Add in the aircraft motion
-							v -= 120.;
-							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
+							double aircraft_vr = swpfile.getAircraftVelocity(i);
+							vr -= aircraft_vr;
 							if (fabs(vr) > nyquist) {
 								// Fold data back into Nyquist range
 								while (vr > nyquist) {
-									vr -= nyquist;
+									vr -= 2*nyquist;
 								}
 								while (vr < -nyquist) {
-									vr += nyquist;
+									vr += 2*nyquist;
 								}
 							}
+							// Add some random noise
+							double dznoise = 10*log10(dz) + 40.;
+							if (dznoise > 1.) dznoise = 1.;
+							double noise = (rand() % (int)dznoise) * ((rand() % 2) - 1);
+							vr += noise;
 							veltmp += vr*power;
 							weight += power;	
 							double vrmean = veltmp/weight;
 							swtmp += power*(vr - vrmean)*(vr - vrmean);
+							//ncptmp += 1/swtmp;
 						}
 					}
 					refdata[n] = 10*log10(reftmp/weight);
 					swdata[n] = sqrt(swtmp/weight);
-					ncpdata[n] = 1.;
+					ncpdata[n] = (1 - swdata[n] / 8.) + refdata[n] / 50.;
+					if (ncpdata[n] < 0.0) ncpdata[n] = 0.01;
+					if (ncpdata[n] > 1.0) ncpdata[n] = 1.0;
 					veldata[n] = veltmp/weight;
-					velcorr[n] = velcorrtmp/weight;
+					// Add some flecks of bad data
+					if (ncpdata[n] < 0.4) {
+						if ((rand() % 100) < 10) veldata[n] += (rand() % 50) *((rand() % 2) - 1);
+					}
+					if (ncpdata[n] < 0.2) veldata[n] += (rand() % 50) *((rand() % 2) - 1);
 					
+					velcorr[n] = velcorrtmp/weight;
 				}
 			} else {
 				refdata[n] = -32768.;
@@ -462,12 +483,14 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 						m*l*cos(k*(x-U*t))*sin(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	w = A*cos(k*(x-U*t))*cos(l*(y-V*t))*sin(m*z)*exp(-nu*wavenum*wavenum*t);
-	dz = 1.0;
+	//dz = 1.0;
+	double dbz = 45.*cos(k*(x-U*t))*cos(l*(y-V*t))*cos(m*(z-1000)/2);
+	if (dbz < -25.) 	dbz = -25.;
+	dz = pow(10.0,(dbz*0.1));
 	if (z < (h+1)) {
 		u = v = w = 0.0;
 		dz = 100000.0;
 	}
-	
 }
 
 void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
