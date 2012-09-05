@@ -11,3 +11,4 @@ INCLUDEPATH += .
 HEADERS += AnalyticAircraft.h DEM.h Dorade.h precision.h read_dorade.h
 SOURCES += AnalyticAircraft.cpp DEM.cpp Dorade.cpp main.cpp
 LIBS += -lgeotiff -ltiff -lgeographic
+QT += xml

@@ -15,16 +15,17 @@
 #include <GeographicLib/TransverseMercatorExact.hpp>
 #include "read_dorade.h"
 
-AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const int& analytic)
+AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const QDomElement& config)
 {
 	
 	// Setup the data path
 	dataPath = QDir(in);
 	outPath = QDir(out);
 	swpSuffix = suffix;
+    parseXMLconfig(config);
 	readSwpDir();
 	
-	analyticType = analytic;
+	//analyticType = analytic;
 	Pi = acos(-1);
 	beamwidth= -999.;
 	
@@ -59,10 +60,12 @@ bool AnalyticAircraft::processSweeps()
 {
 
 	// Set these parameters!
-	double refLat = 16.5;
-	double refLon = 148.0;
-	QTime refTime(23,48);
-	QString demfile = "ASTGTM_N16E146_dem.tif";
+	double refLat = configHash.value("ref_lat").toFloat();
+	double refLon = configHash.value("ref_lon").toFloat();
+	QTime refTime(configHash.value("ref_hr").toFloat(),
+                  configHash.value("ref_min").toFloat(),
+                  configHash.value("ref_sec").toFloat());
+	QString demfile = configHash.value("dem_file");
 	
 	// Load the DEM
 	if(!asterDEM.readDem(demfile.toAscii().data())) return false;
@@ -146,8 +149,8 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	cfptr->c_rotang = 0.0;
 	cfptr->c_tiltang = 0.0;
 
-	double ns_gspeed = 120.0;
-	double ew_gspeed = 0.0;
+	double ns_gspeed = configHash.value("ns_gspeed").toFloat();
+	double ew_gspeed = configHash.value("ew_gspeed").toFloat();
 	double refX, refY;
 	tm.Forward(refLon, refLat, refLon, refX, refY);
 	for (int i=0; i < swpfile.getNumRays(); i++) {		
@@ -160,7 +163,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double radarLat, radarLon,radarAlt;
 		double radarX = refX + ew_gspeed * msecElapsed/1000.0;
 		double radarY = refY + ns_gspeed * msecElapsed/1000.0;
-		radarAlt = 3.0;
+		radarAlt = configHash.value("radar_alt").toFloat() / 1000.0;
 		
 		// If the aircraft is below the ground there is a problem
 		tm.Reverse(refLon, radarX, radarY, radarLat, radarLon);
@@ -174,8 +177,8 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		double z = radarAlt*1000;
 		double t = 0.;
 		double u, v, w, dz;
-		double hwavelength = 10000.;
-		double vwavelength = 32000.;
+		double hwavelength = configHash.value("hwavelength").toFloat();
+		double vwavelength = configHash.value("vwavelength").toFloat();
 		if (analytic == beltrami) {
 			BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == wrf) {
@@ -205,43 +208,22 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 void AnalyticAircraft::addNavError(double refLat, double refLon, QTime refTime, int analytic)
 {
 	
-	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
-		
-	double ns_gspeed = 120.0;
-	double ew_gspeed = 0.0;
-	double refX, refY;
-	tm.Forward(refLon, refLat, refLon, refX, refY);
-	for (int i=0; i < swpfile.getNumRays(); i++) {		
+	for (int i=0; i < swpfile.getNumRays(); i++) {
 		asib_info* aptr = swpfile.getAircraftBlock(i);
 		ryib_info* ryptr = swpfile.getRyibBlock(i);
-		
-		QTime rayTime(ryptr->hour, ryptr->min, ryptr->sec, ryptr->msec);
-		int msecElapsed = refTime.msecsTo(rayTime);
-		
-		double radarLat, radarLon,radarAlt;
-		double radarX = ew_gspeed * msecElapsed/1000.0;
-		double radarY = ns_gspeed * msecElapsed/1000.0;
-		radarAlt = 3.0;
-		
-		// If the aircraft is below the ground there is a problem
-		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
-		int h = asterDEM.getElevation(radarLat, radarLon);
-		if (radarAlt*1000 < h) {
-			std::cout << "Problem with heights! Aircraft below ground\n";
-		}
-		
-		aptr->lon = radarLon;
-		aptr->lat = radarLat;
-		aptr->alt_msl= radarAlt+0.2;
-		aptr->alt_agl= radarAlt+0.2;
-		aptr->ew_gspeed= ew_gspeed;
-		aptr->ns_gspeed = ns_gspeed+1.0;
-		aptr->vert_vel= 0.;
-		aptr->head= 0.;
-		aptr->roll= 1.0;
-		aptr->pitch= 1.5;
-		aptr->drift= 0.2;
-		//aptr->tilt_ang -= 0.3;
+				
+		aptr->lon += configHash.value("lon_error").toFloat();
+		aptr->lat += configHash.value("lat_error").toFloat();
+		aptr->alt_msl += configHash.value("alt_error").toFloat();
+		aptr->alt_agl += configHash.value("alt_error").toFloat();
+		aptr->ew_gspeed += configHash.value("ew_error").toFloat();
+		aptr->ns_gspeed += configHash.value("ns_error").toFloat();
+		aptr->vert_vel += configHash.value("vv_error").toFloat();
+		aptr->head += configHash.value("heading_error").toFloat();
+		aptr->roll += configHash.value("roll_error").toFloat();
+		aptr->pitch += configHash.value("pitch_error").toFloat();
+		aptr->drift += configHash.value("drift_error").toFloat();
+		aptr->tilt_ang += configHash.value("tilt_error").toFloat();
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
 	}
@@ -301,7 +283,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					h = 0;
 				}
 				if (analytic == beltrami) {
-					double vwavelength = 32000.;
+					double vwavelength = configHash.value("vwavelength").toFloat();
 					double utmp, vtmp, wtmp;
 					u = v = w = 0.0;
 					for (int wl = 16; wl < 17; wl = wl*2) {
@@ -322,7 +304,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
-				beamwidth = 1.8;
+				beamwidth = configHash.value("beamwidth").toFloat();
 				
 				if (beamwidth < 0) {
 					refdata[n] = 10*log10(dz);
@@ -346,7 +328,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					
 					// Add some random noise
 					double dznoise = rand() % ((int)refdata[n] + 20) + 1;
-					double noise = 1/(dznoise) * ((rand() % 2) - 1);
+					double noise = configHash.value("noise").toFloat() * 1/(dznoise) * ((rand() % 2) - 1);
 					veldata[n] = vr + noise;
 				} else {
 					// Loop over the width of the beam
@@ -402,8 +384,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							} else {
 								h = 0;
 							}
-							double hwavelength = 16000.;
-							double vwavelength = 32000.;
+                            double hwavelength = configHash.value("hwavelength").toFloat();
+                            double vwavelength = configHash.value("vwavelength").toFloat();
 							if (analytic == beltrami) {
 								BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 							} else if (analytic == wrf) {
@@ -427,7 +409,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							// Add some random noise
 							double dznoise = 10*log10(dz) + 40.;
 							if (dznoise > 1.) dznoise = 1.;
-							double noise = (rand() % (int)dznoise) * ((rand() % 2) - 1);
+							double noise = configHash.value("noise").toFloat() *
+                                (rand() % (int)dznoise) * ((rand() % 2) - 1);
 							vr += noise;
 							veltmp += vr*power;
 							weight += power;	
@@ -444,9 +427,11 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					veldata[n] = veltmp/weight;
 					// Add some flecks of bad data
 					if (ncpdata[n] < 0.4) {
-						if ((rand() % 100) < 10) veldata[n] += (rand() % 50) *((rand() % 2) - 1);
+						if ((rand() % 100) < 10) veldata[n] += configHash.value("noise").toFloat() *
+                            (rand() % 50) *((rand() % 2) - 1);
 					}
-					if (ncpdata[n] < 0.2) veldata[n] += (rand() % 50) *((rand() % 2) - 1);
+					if (ncpdata[n] < 0.2) veldata[n] += configHash.value("noise").toFloat() *
+                        (rand() % 50) *((rand() % 2) - 1);
 					
 					velcorr[n] = velcorrtmp/weight;
 				}
@@ -468,11 +453,11 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	double k = 2*Pi / hwavelength; // Horizontal wavelengths
 	double l = k;
 	double m = 2*Pi / vwavelength;
-	double A = 10.; // Peak Vertical velocity
+	double A = configHash.value("peak_w").toFloat(); // Peak Vertical velocity
 	double amp = A / (k*k + l*l);
 	double wavenum = sqrt(k*k + l*l + m*m);
-	double U = 10.;
-	double V = 10.;
+	double U = configHash.value("mean_u").toFloat();
+	double V = configHash.value("mean_v").toFloat();
 	double nu = 15.11e-6;
 	
 	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
@@ -500,3 +485,47 @@ void AnalyticAircraft::WrfResample(double x, double y, double z, double t, doubl
 //height(i,k,j) = 0.5*(phb(i,k,j)+phb(i,k+1,j)+ph(i,k,j)+ph(i,k+1,j))/9.81
 
 }
+
+bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
+{
+    
+    std::cout << "Parsing configuration file...\n";
+	
+	// Parse the nodes to a hash
+	QDomNodeList nodeList = config.childNodes();
+	for (int i = 0; i < nodeList.count(); i++) {
+		QDomNode currNode = nodeList.item(i);
+		// Check to see if this is a set of pass parameters
+		QString iter = 0;
+		if (currNode.hasAttributes() and currNode.attributes().contains("iter")) {
+			iter = currNode.toElement().attribute("iter");
+		}
+		QDomNodeList configList = currNode.childNodes();
+		for (int j = 0; j < configList.count(); j++) {
+			QDomNode configItem = configList.item(j);
+			QDomElement group = configItem.toElement();
+			QString tag = group.tagName();
+			if (iter.toInt() > 1) {
+				// Append the pass number to the tagName
+				tag += "_" + iter;
+			}
+			if (!group.text().isEmpty()) {
+				configHash.insert(tag, group.text());
+                std::cout << tag.toStdString() << " => " << configHash.value(tag).toStdString() << endl;
+			}
+		}
+	}
+	
+	// Validate the hash -- multiple passes are not validated currently
+	QStringList configKeys;
+	configKeys << "ref_lat" << "ref_lon";
+	for (int i = 0; i < configKeys.count(); i++) {
+		if (!configHash.contains(configKeys.at(i))) {
+            std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << endl;
+			return false;
+		}
+	}
+	return true;
+	
+}
+

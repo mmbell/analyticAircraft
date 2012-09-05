@@ -13,13 +13,15 @@
 #include "Dorade.h"
 #include <QList>
 #include <QDir>
+#include <QDomDocument>
+#include <QHash>
 #include "DEM.h"
 
 class AnalyticAircraft
 {
 	
 public:
-	AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const int& analytic);
+	AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const QDomElement& config);
 	~AnalyticAircraft();
 	
 	bool readSwpDir();
@@ -36,7 +38,8 @@ public:
 	void resample_wind(double refLat, double refLon, int analytic);
 
 	bool processSweeps();
-	
+	bool parseXMLconfig(const QDomElement& config);
+    
 	enum analytics {
 		beltrami,
 		wrf
@@ -54,7 +57,7 @@ private:
 	int beamwidth;
 	
 	DEM asterDEM;
-	
+    QHash<QString, QString> configHash;
 	void BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 	void WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 
