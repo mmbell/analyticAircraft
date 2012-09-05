@@ -1,6 +1,12 @@
 build/*
-windfields/*
-.DS_Store
-analyticAircraft.xcodeproj/*
-profile
+libs/*
 Info.plist
+*.xcodeproj/*
+*.app/*
+.svn
+.DS_Store
+profile
+*.o
+*.bundle
+*.log
+Makefile

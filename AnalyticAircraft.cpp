@@ -158,12 +158,12 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		int msecElapsed = refTime.msecsTo(rayTime);
 
 		double radarLat, radarLon,radarAlt;
-		double radarX = ew_gspeed * msecElapsed/1000.0;
-		double radarY = ns_gspeed * msecElapsed/1000.0;
+		double radarX = refX + ew_gspeed * msecElapsed/1000.0;
+		double radarY = refY + ns_gspeed * msecElapsed/1000.0;
 		radarAlt = 3.0;
 		
 		// If the aircraft is below the ground there is a problem
-		tm.Reverse(refLon, refX + radarX, refY + radarY, radarLat, radarLon);
+		tm.Reverse(refLon, radarX, radarY, radarLat, radarLon);
 		int h = asterDEM.getElevation(radarLat, radarLon);
 		if (radarAlt*1000 < h) {
 			std::cout << "Problem with heights! Aircraft below ground\n";
