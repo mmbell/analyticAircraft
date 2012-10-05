@@ -365,8 +365,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							// Gaussian beam
 							//double power = exp(-(beamaxis*beamaxis)/1.443695);
 							
-							// Rectangular beam
-							double power = (sin(2*Pi*beamaxis)/2*Pi*beamaxis)*(sin(2*Pi*beamaxis)/2*Pi*beamaxis);
+							// Rectangular beam (ELDORA-like)
+							double power = pow(10.0,4.5*log10(fabs(sin(27*sin(beamaxis))/(27*sin(beamaxis)))));
 							
 							// Gnarly sidelobes
 							//double power = (sin(10*beamaxis)/sin(beamaxis));
@@ -511,7 +511,7 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 			}
 			if (!group.text().isEmpty()) {
 				configHash.insert(tag, group.text());
-                std::cout << tag.toStdString() << " => " << configHash.value(tag).toStdString() << endl;
+                std::cout << tag.toStdString() << " => " << configHash.value(tag).toStdString() << std::endl;
 			}
 		}
 	}
@@ -521,7 +521,7 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 	configKeys << "ref_lat" << "ref_lon";
 	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
-            std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << endl;
+            std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << std::endl;
 			return false;
 		}
 	}
