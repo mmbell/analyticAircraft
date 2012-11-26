@@ -200,7 +200,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		aptr->vert_wind= w;
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
-		aptr->tilt_ang=15.6;
+		aptr->tilt_ang=configHash.value("tilt_angle").toFloat();
 	}
 	
 }
@@ -296,6 +296,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					/* double k = 2*Pi/(4000.);
 					u += 5*(sin(k*x)*cos(k*y));
 					v += -5*(cos(k*x)*sin(k*y)); */
+					// Background reflectivity noise floor
+					if (dz == 0) dz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
 					
 				} else if (analytic == wrf) {
 					WrfResample(x, y, z, t, h, u, v, w, dz);
@@ -332,11 +334,12 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					veldata[n] = vr + noise;
 				} else {
 					// Loop over the width of the beam
-					double maxbeam = (beamwidth*3.)*Pi/180.;
-					double beamincr = maxbeam/10.;
+					double maxbeam = Pi;
+					double beamincr = maxbeam/90.;
 					// Circle in spherical plane to radar beam
 					double reftmp, veltmp, velcorrtmp, swtmp, ncptmp, weight;
-					reftmp = dz;
+					
+					reftmp = dz;					
 					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
 					velcorrtmp = vr;
 					double aircraft_vr = swpfile.getAircraftVelocity(i);
@@ -354,19 +357,24 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					swtmp = 0.0;
 					ncptmp = 1.0;
 					weight = 1.0;
+										
 					for (double r=beamincr; r <= maxbeam; r += beamincr) {
-						for (double theta=0; theta < 360; theta += 10) {
+						double beamaxis = r; //(beamwidth*Pi/180.); 
+						
+						for (double theta=0; theta < 360; theta += 5) {
 							double azmod = az + r*cos(theta * Pi / 180.);
 							double elmod = el + r*sin(theta * Pi / 180.);
 							relX = range*sin(azmod)*cos(elmod);
 							relY = range*cos(azmod)*cos(elmod);
 							relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(elmod)) - rEarth;
-							double beamaxis = r/(beamwidth*Pi/180.); 
 							// Gaussian beam
 							//double power = exp(-(beamaxis*beamaxis)/1.443695);
 							
 							// Rectangular beam (ELDORA-like)
-							double power = pow(10.0,4.5*log10(fabs(sin(27*sin(beamaxis))/(27*sin(beamaxis)))));
+							double power = fabs(sin(27*sin(beamaxis))/(27*sin(beamaxis)));
+							if (beamaxis > Pi/2.) beamaxis = Pi/2.; // power = power * 0.001;
+							power = pow(10.0,4.5*log10(power));
+							//if (beamaxis > Pi/2.) power = 0.000000316227766;
 							
 							// Gnarly sidelobes
 							//double power = (sin(10*beamaxis)/sin(beamaxis));
@@ -391,6 +399,9 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							} else if (analytic == wrf) {
 								WrfResample(x, y, z, t, h, u, v, w, dz);
 							}
+							if (dz == 100000.0) dz = 100000.0 * sin(elmod)*sin(elmod);
+							
+							
 							reftmp += dz*power;
 							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
 							velcorrtmp += vr*power;
@@ -419,7 +430,9 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							//ncptmp += 1/swtmp;
 						}
 					}
-					refdata[n] = 10*log10(reftmp/weight);
+					double bgdz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
+					if (reftmp < bgdz) reftmp = bgdz; 
+					refdata[n] = 10*log10(reftmp);
 					swdata[n] = sqrt(swtmp/weight);
 					ncpdata[n] = (1 - swdata[n] / 8.) + refdata[n] / 50.;
 					if (ncpdata[n] < 0.0) ncpdata[n] = 0.01;
@@ -460,7 +473,7 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	double V = configHash.value("mean_v").toFloat();
 	double nu = 15.11e-6;
 	
-	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
+/*	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
 						m*k*sin(k*(x-U*t))*cos(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	v = V + amp*(wavenum*k*sin(k*(x - U*t))*cos(l*(y-V*t))*sin(m*z) - 
@@ -470,10 +483,13 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	//dz = 1.0;
 	double dbz = 45.*cos(k*(x-U*t))*cos(l*(y-V*t))*cos(m*(z-1000)/2);
 	if (dbz < -25.) 	dbz = -25.;
-	dz = pow(10.0,(dbz*0.1));
-	if (z < (h+1)) {
+	dz = pow(10.0,(dbz*0.1)); */
+	if (fabs(z-h) < 75.0) {
 		u = v = w = 0.0;
 		dz = 100000.0;
+	} else {
+		u = v = w = 0.0;
+		dz = 0.0; //0.000316227766017;
 	}
 }
 
@@ -518,8 +534,13 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 	
 	// Validate the hash -- multiple passes are not validated currently
 	QStringList configKeys;
-	configKeys << "ref_lat" << "ref_lon";
-	for (int i = 0; i < configKeys.count(); i++) {
+	configKeys << "ref_lat" << "ref_lon" << "ref_hr" << "ref_min" << "ref_sec"
+		<< "dem_file" << "analytic" << "ns_gspeed" << "radar_alt" << "beamtype"
+		<< "beamwidth" << "tilt_angle" << "lon_error" << "lat_error" << "alt_error"
+		<< "ew_error" << "ns_error" << "vv_error" << "heading_error" << "roll_error"
+		<< "pitch_error" << "drift_error" << "tilt_error" << "hwavelength" << "vwavelength"
+		<< "mean_u" << "mean_v" << "peak_w" << "noise";
+ 	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
             std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << std::endl;
 			return false;
