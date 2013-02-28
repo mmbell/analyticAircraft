@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<analyticaircraft xmlns = 'https://github.com/mmbell/analyticAircraft'>
+	<reference>
+		<ref_lat>16.5</ref_lat>
+		<ref_lon>148.0</ref_lon>
+		<ref_hr>23</ref_hr>
+		<ref_min>48</ref_min>
+		<ref_sec>0</ref_sec>
+		<dem_file>ASTGTM_N16E146_dem.tif</dem_file>
+		<analytic>beltrami</analytic>
+	</reference>
+	<radar>
+		<ns_gspeed>120.0</ns_gspeed>
+		<ew_gspeed>0.0</ew_gspeed>
+		<radar_alt>3000.0</radar_alt>
+		<beamtype>1</beamtype>
+		<beamwidth>-999</beamwidth>
+		<tilt_angle>15.6</tilt_angle>
+		<lon_error>0.0</lon_error>
+		<lat_error>0.0</lat_error>
+		<alt_error>0.2</alt_error>
+		<ew_error>0.0</ew_error>
+		<ns_error>1.0</ns_error>
+		<vv_error>0.0</vv_error>
+		<heading_error>0.0</heading_error>
+		<roll_error>1.0</roll_error>
+		<pitch_error>1.5</pitch_error>
+		<drift_error>0.0</drift_error>
+		<tilt_error>0.0</tilt_error>
+	</radar>
+	<beltrami>
+		<hwavelength>16000.0</hwavelength>
+		<vwavelength>32000.0</vwavelength>
+		<mean_u>10.0</mean_u>
+		<mean_v>10.0</mean_v>
+		<peak_w>10.0</peak_w>
+		<noise>0</noise>
+	</beltrami>
+</analyticaircraft>
