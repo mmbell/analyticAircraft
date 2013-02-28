@@ -153,6 +153,14 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	double ew_gspeed = configHash.value("ew_gspeed").toFloat();
 	double refX, refY;
 	tm.Forward(refLon, refLat, refLon, refX, refY);
+
+	QFile insituFile("insitudata.txt");
+	if (!insituFile.open(QIODevice::Append | QIODevice::Text))
+		std::cerr << "Problem opening in situ file\n";
+	QTextStream outstream(&insituFile);
+	outstream.setRealNumberPrecision(4);
+	outstream.setFieldWidth(10);
+        outstream.setRealNumberNotation(QTextStream::FixedNotation);
 	for (int i=0; i < swpfile.getNumRays(); i++) {		
 		asib_info* aptr = swpfile.getAircraftBlock(i);
 		ryib_info* ryptr = swpfile.getRyibBlock(i);
@@ -201,7 +209,9 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
 		aptr->tilt_ang=configHash.value("tilt_angle").toFloat();
+		outstream << ryptr->hour << ryptr->min << ryptr->sec << ryptr->msec << msecElapsed << radarLat << radarLon << radarAlt << u << v << w << endl;
 	}
+	insituFile.close();
 	
 }
 
@@ -309,33 +319,48 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				beamwidth = configHash.value("beamwidth").toFloat();
 				
 				if (beamwidth < 0) {
-					refdata[n] = 10*log10(dz);
-					swdata[n] = 1.;
-					ncpdata[n] = 1.;
-					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
-					velcorr[n] = vr;
-					
-					// Add in the aircraft motion
-					double aircraft_vr = swpfile.getAircraftVelocity(i);
-					vr -= aircraft_vr;
-					if (fabs(vr) > nyquist) {
-						// Fold data back into Nyquist range
-						while (vr > nyquist) {
-							vr -= 2*nyquist;
-						}
-						while (vr < -nyquist) {
-							vr += 2*nyquist;
-						}
-					}
-					
-					// Add some random noise
-					double dznoise = rand() % ((int)refdata[n] + 20) + 1;
-					double noise = configHash.value("noise").toFloat() * 1/(dznoise) * ((rand() % 2) - 1);
-					veldata[n] = vr + noise;
+                    /* if ((z-h) < 75) {
+                        refdata[n] = 50.;
+                        swdata[n] = 0.;
+                        ncpdata[n] = 1.;
+                        veldata[n] = 0.;
+                        velcorr[n] = 0.;
+                    } else { */
+                        refdata[n] = 10*log10(dz);
+                        swdata[n] = 0.;
+                        ncpdata[n] = 1.;
+                        double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+                        velcorr[n] = vr;
+                        
+                        // Add in the aircraft motion
+                        double aircraft_vr = swpfile.getAircraftVelocity(i);
+                        vr -= aircraft_vr;
+                        if (fabs(vr) > nyquist) {
+                            // Fold data back into Nyquist range
+                            while (vr > nyquist) {
+                                vr -= 2*nyquist;
+                            }
+                            while (vr < -nyquist) {
+                                vr += 2*nyquist;
+                            }
+                        }
+                        
+                        // Add some random noise
+                        double noise = configHash.value("noise").toFloat();
+                        if (noise > 0) {
+                            noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
+                            vr += noise;
+                        }
+                        //double dznoise = rand() % ((int)refdata[n] + 20) + 1;
+                        //double noise = configHash.value("noise").toFloat() * 1/(dznoise) * ((rand() % 2) - 1);
+                        veldata[n] = vr;
+                    //}
 				} else {
 					// Loop over the width of the beam
 					double maxbeam = Pi;
 					double beamincr = maxbeam/90.;
+                    int beamtype = configHash.value("beamtype").toFloat();
+
 					// Circle in spherical plane to radar beam
 					double reftmp, veltmp, velcorrtmp, swtmp, ncptmp, weight;
 					
@@ -367,19 +392,21 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							relX = range*sin(azmod)*cos(elmod);
 							relY = range*cos(azmod)*cos(elmod);
 							relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(elmod)) - rEarth;
-							// Gaussian beam
-							//double power = exp(-(beamaxis*beamaxis)/1.443695);
-							
-							// Rectangular beam (ELDORA-like)
-							double power = fabs(sin(27*sin(beamaxis))/(27*sin(beamaxis)));
-							if (beamaxis > Pi/2.) beamaxis = Pi/2.; // power = power * 0.001;
-							power = pow(10.0,4.5*log10(power));
-							//if (beamaxis > Pi/2.) power = 0.000000316227766;
-							
-							// Gnarly sidelobes
-							//double power = (sin(10*beamaxis)/sin(beamaxis));
-							//power = (power > -0.1) ? fabs(power) : 0.1;
-							
+                            double power;
+                            if (beamtype == 0) {
+                                // Gaussian beam
+                                power = exp(-(beamaxis*beamaxis)/1.443695);
+							} else if (beamtype == 1) {
+                                // Rectangular beam (ELDORA-like)
+                                power = fabs(sin(27*sin(beamaxis))/(27*sin(beamaxis)));
+                                if (beamaxis > Pi/2.) beamaxis = Pi/2.; // power = power * 0.001;
+                                power = pow(10.0,4.5*log10(power));
+                                //if (beamaxis > Pi/2.) power = 0.000000316227766;
+							} else if (beamtype == 2) {
+                                // Gnarly sidelobes
+                                power = (sin(10*beamaxis)/sin(beamaxis));
+                                power = (power > -0.1) ? fabs(power) : 0.1;
+                            }
 							x = radarX + relX - refX;
 							y = radarY + relY - refY;
 							z = relZ + radarAlt*1000;
@@ -418,11 +445,13 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 								}
 							}
 							// Add some random noise
-							double dznoise = 10*log10(dz) + 40.;
-							if (dznoise > 1.) dznoise = 1.;
-							double noise = configHash.value("noise").toFloat() *
-                                (rand() % (int)dznoise) * ((rand() % 2) - 1);
-							vr += noise;
+							//double dznoise = 10*log10(dz) + 40.;
+							//if (dznoise > 1.) dznoise = 1.;
+                            double noise = configHash.value("noise").toFloat();
+                            if (noise > 0) {
+                                noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
+                                vr += noise;
+                            }
 							veltmp += vr*power;
 							weight += power;	
 							double vrmean = veltmp/weight;
@@ -473,7 +502,7 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	double V = configHash.value("mean_v").toFloat();
 	double nu = 15.11e-6;
 	
-/*	u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
+    u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
 						m*k*sin(k*(x-U*t))*cos(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	v = V + amp*(wavenum*k*sin(k*(x - U*t))*cos(l*(y-V*t))*sin(m*z) - 
@@ -483,13 +512,11 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	//dz = 1.0;
 	double dbz = 45.*cos(k*(x-U*t))*cos(l*(y-V*t))*cos(m*(z-1000)/2);
 	if (dbz < -25.) 	dbz = -25.;
-	dz = pow(10.0,(dbz*0.1)); */
-	if (fabs(z-h) < 75.0) {
+	dz = pow(10.0,(dbz*0.1));
+	//if (fabs(z-h) < 75.0) {
+    if (z-h < 75.0) {
 		u = v = w = 0.0;
 		dz = 100000.0;
-	} else {
-		u = v = w = 0.0;
-		dz = 0.0; //0.000316227766017;
 	}
 }
 
