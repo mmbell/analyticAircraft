@@ -285,7 +285,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 		tm.Forward(refLon, radarLat, radarLon, radarX, radarY);
 
 		for (int n=0; n < swpfile.getNumGates(); n++) {
-			float range = gatesp[n];
+			float range = gatesp[n]+configHash.value("range_delay_error").toFloat();
 			double relX = range*sin(az)*cos(el);
 			double relY = range*cos(az)*cos(el);
 			double rEarth = 6371000;
@@ -614,8 +614,8 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 		<< "dem_file" << "analytic" << "ns_gspeed" << "radar_alt" << "beamtype"
 		<< "beamwidth" << "tilt_angle" << "lon_error" << "lat_error" << "alt_error"
 		<< "ew_error" << "ns_error" << "vv_error" << "heading_error" << "roll_error"
-		<< "pitch_error" << "drift_error" << "tilt_error" << "hwavelength" << "vwavelength"
-		<< "mean_u" << "mean_v" << "peak_w" << "noise";
+		<< "pitch_error" << "drift_error" << "tilt_error" << "range_delay_error"
+		<< "hwavelength" << "vwavelength" << "mean_u" << "mean_v" << "peak_w" << "noise";
  	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
             std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << std::endl;
