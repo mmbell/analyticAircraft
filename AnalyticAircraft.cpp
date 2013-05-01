@@ -78,8 +78,8 @@ bool AnalyticAircraft::processSweeps()
 		analytic = wrf;
 	} else if (mode == "constant") {
 		analytic = constant;
-	} else if (mode == "cylind") {
-		analytic = cylind;
+	} else if (mode == "cylindrical") {
+		analytic = cylindrical;
 	}
 	
 	// Resample an analytic field
@@ -205,7 +205,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 			WrfResample(x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == constant) {
 			ConstantWind(x, y, z, t, h, u, v, w, dz);
-		} else if (analytic == cylind) {
+		} else if (analytic == cylindrical) {
 			CylindricalWind(x, y, z, t, h, u, v, w, dz);
 		}
 		aptr->lon = radarLon;
@@ -326,7 +326,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					WrfResample(x, y, z, t, h, u, v, w, dz);
 				} else if (analytic == constant) {
 					ConstantWind(x, y, z, t, h, u, v, w, dz);
-				} else if (analytic == cylind) {
+				} else if (analytic == cylindrical) {
 					CylindricalWind(x, y, z, t, h, u, v, w, dz);
 				}
 				// Background reflectivity noise floor
@@ -446,7 +446,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 								WrfResample(x, y, z, t, h, u, v, w, dz);
 							} else if (analytic == constant) {
 								ConstantWind(x, y, z, t, h, u, v, w, dz);
-							} else if (analytic == cylind) {
+							} else if (analytic == cylindrical) {
 								CylindricalWind(x, y, z, t, h, u, v, w, dz);
 							}
 							if (dz == 100000.0) dz = 100000.0 * sin(elmod)*sin(elmod);

@@ -44,7 +44,7 @@ public:
 		beltrami,
 		wrf,
 		constant,
-		cylind
+		cylindrical
 	};
 	
 private:
