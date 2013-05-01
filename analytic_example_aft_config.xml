@@ -27,6 +27,7 @@
 		<pitch_error>1.5</pitch_error>
 		<drift_error>0.0</drift_error>
 		<tilt_error>0.0</tilt_error>
+		<range_delay_error>0.0</range_delay_error>
 	</radar>
 	<beltrami>
 		<hwavelength>16000.0</hwavelength>
