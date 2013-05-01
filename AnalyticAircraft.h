@@ -42,7 +42,9 @@ public:
     
 	enum analytics {
 		beltrami,
-		wrf
+		wrf,
+		constant,
+		cylind
 	};
 	
 private:
@@ -60,7 +62,8 @@ private:
     QHash<QString, QString> configHash;
 	void BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 	void WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
-
+	void ConstantWind(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
+	void CylindricalWind(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
 };
 
 #endif

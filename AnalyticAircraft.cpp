@@ -70,16 +70,28 @@ bool AnalyticAircraft::processSweeps()
 	// Load the DEM
 	if(!asterDEM.readDem(demfile.toAscii().data())) return false;
 	
+	QString mode = configHash.value("analytic");
+	int analytic = 0;
+	if (mode == "beltrami") {
+		analytic = beltrami;
+	} else if (mode == "wrf") {
+		analytic = wrf;
+	} else if (mode == "constant") {
+		analytic = constant;
+	} else if (mode == "cylind") {
+		analytic = cylind;
+	}
+	
 	// Resample an analytic field
 	if (getfileListsize()) {
 		for (int f = 0; f < getfileListsize(); ++f) {
 			if (load(f)) {
 				printf("\n\nProcessing file %d\n", f);
 				// Create an analytic track, then add some navigation errors
-				analyticTrack(refLat, refLon, refTime, beltrami);
+				analyticTrack(refLat, refLon, refTime, analytic);
 				recalculateAirborneAngles();
-				resample_wind(refLat, refLon, beltrami);
-				addNavError(refLat, refLon, refTime, beltrami);
+				resample_wind(refLat, refLon, analytic);
+				addNavError(refLat, refLon, refTime, analytic);
 				saveQCedSwp(f);
 			} else {
 				printf("\n\nError loading file %d\n", f);
@@ -191,6 +203,10 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 			BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == wrf) {
 			WrfResample(x, y, z, t, h, u, v, w, dz);
+		} else if (analytic == constant) {
+			ConstantWind(x, y, z, t, h, u, v, w, dz);
+		} else if (analytic == cylind) {
+			CylindricalWind(x, y, z, t, h, u, v, w, dz);
 		}
 		aptr->lon = radarLon;
 		aptr->lat = radarLat;
@@ -245,14 +261,14 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 {
 
 	// Resample the Doppler field with a Beltrami flow from Shapiro et al. 2009
-
-	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
-	double refX, refY;
-	tm.Forward(refLon, refLat, refLon, refX, refY);
-	int maxElevation = asterDEM.getMaxElevation();
-	float nyquist = swpfile.getNyquistVelocity();
-	
+#pragma omp parallel for	
 	for (int i=0; i < swpfile.getNumRays(); i++) {
+		GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
+		double refX, refY;
+		tm.Forward(refLon, refLat, refLon, refX, refY);
+		int maxElevation = asterDEM.getMaxElevation();
+		float nyquist = swpfile.getNyquistVelocity();
+		
 		float az = swpfile.getAzimuth(i)*Pi/180.;
 		float el = swpfile.getElevation(i)*Pi/180.;
 		float radarLat = swpfile.getRadarLat(i);
@@ -306,12 +322,15 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					/* double k = 2*Pi/(4000.);
 					u += 5*(sin(k*x)*cos(k*y));
 					v += -5*(cos(k*x)*sin(k*y)); */
-					// Background reflectivity noise floor
-					if (dz == 0) dz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
-					
 				} else if (analytic == wrf) {
 					WrfResample(x, y, z, t, h, u, v, w, dz);
+				} else if (analytic == constant) {
+					ConstantWind(x, y, z, t, h, u, v, w, dz);
+				} else if (analytic == cylind) {
+					CylindricalWind(x, y, z, t, h, u, v, w, dz);
 				}
+				// Background reflectivity noise floor
+				//if (dz == 0) dz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
 				
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
@@ -425,10 +444,13 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 								BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 							} else if (analytic == wrf) {
 								WrfResample(x, y, z, t, h, u, v, w, dz);
+							} else if (analytic == constant) {
+								ConstantWind(x, y, z, t, h, u, v, w, dz);
+							} else if (analytic == cylind) {
+								CylindricalWind(x, y, z, t, h, u, v, w, dz);
 							}
 							if (dz == 100000.0) dz = 100000.0 * sin(elmod)*sin(elmod);
-							
-							
+
 							reftmp += dz*power;
 							vr = u*sin(azmod)*cos(elmod) + v*cos(azmod)*cos(elmod) + w*sin(elmod);
 							velcorrtmp += vr*power;
@@ -452,10 +474,10 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
                                 noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
                                 vr += noise;
                             }
-							veltmp += vr*power;
-							weight += power;	
+							veltmp += vr*dz*power;
+							weight += dz*power;	
 							double vrmean = veltmp/weight;
-							swtmp += power*(vr - vrmean)*(vr - vrmean);
+							swtmp += dz*power*(vr - vrmean)*(vr - vrmean);
 							//ncptmp += 1/swtmp;
 						}
 					}
@@ -527,6 +549,33 @@ void AnalyticAircraft::WrfResample(double x, double y, double z, double t, doubl
 	
 //height(i,k,j) = 0.5*(phb(i,k,j)+phb(i,k+1,j)+ph(i,k,j)+ph(i,k+1,j))/9.81
 
+}
+
+void AnalyticAircraft::ConstantWind(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
+{
+	u = configHash.value("mean_u").toFloat();
+	v = configHash.value("mean_v").toFloat();
+	w = 0.0;
+	dz = 0.01;
+    if (fabs(z-h) < 75.0) {
+		u = v = w = 0.0;
+		dz = 100000.0;
+	}
+}
+
+void AnalyticAircraft::CylindricalWind(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
+{
+	double vr = configHash.value("mean_u").toFloat();
+	double vt = configHash.value("mean_v").toFloat();
+	double az = atan2(y,x);
+	u = vr*cos(az) - vt*sin(az);
+	v = vr*sin(az) + vt*cos(az);
+	w = configHash.value("mean_w").toFloat();
+	dz = 0.01;
+    if (fabs(z-h) < 75.0) {
+		u = v = w = 0.0;
+		dz = 100000.0;
+	}
 }
 
 bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
