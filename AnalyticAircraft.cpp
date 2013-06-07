@@ -80,7 +80,7 @@ bool AnalyticAircraft::processSweeps()
 		analytic = constant;
 	} else if (mode == "cylindrical") {
 		analytic = cylindrical;
-	}
+	} 
 	
 	// Resample an analytic field
 	if (getfileListsize()) {
@@ -88,7 +88,10 @@ bool AnalyticAircraft::processSweeps()
 			if (load(f)) {
 				printf("\n\nProcessing file %d\n", f);
 				// Create an analytic track, then add some navigation errors
-				analyticTrack(refLat, refLon, refTime, analytic);
+				clearCfacs();
+				if (configHash.value("track") == "analytic") {
+					analyticTrack(refLat, refLon, refTime, analytic);
+				}
 				recalculateAirborneAngles();
 				resample_wind(refLat, refLon, analytic);
 				addNavError(refLat, refLon, refTime, analytic);
@@ -142,25 +145,6 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	
 	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
 	
-	// Clear the cfac block or manually enter values here
-	cfac_info* cfptr = swpfile.getCfacBlock();
-	cfptr->c_azimuth = 0.0;
-	cfptr->c_elevation = 0.0;
-	cfptr->c_range_delay = 0.0;
-	cfptr->c_rad_lon = 0.0;
-	cfptr->c_rad_lat = 0.0;
-	cfptr->c_alt_msl = 0.0;
-	cfptr->c_alt_agl = 0.0;
-	cfptr->c_ew_grspeed = 0.0;
-	cfptr->c_ns_grspeed = 0.0;
-	cfptr->c_vert_vel = 0.0;
-	cfptr->c_head = 0.0;
-	cfptr->c_roll = 0.0;
-	cfptr->c_pitch = 0.0;
-	cfptr->c_drift = 0.0;
-	cfptr->c_rotang = 0.0;
-	cfptr->c_tiltang = 0.0;
-
 	double ns_gspeed = configHash.value("ns_gspeed").toFloat();
 	double ew_gspeed = configHash.value("ew_gspeed").toFloat();
 	double refX, refY;
@@ -230,6 +214,30 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	insituFile.close();
 	
 }
+
+void AnalyticAircraft::clearCfacs()
+{
+
+	// Clear the cfac block or manually enter values here
+	cfac_info* cfptr = swpfile.getCfacBlock();
+	cfptr->c_azimuth = 0.0;
+	cfptr->c_elevation = 0.0;
+	cfptr->c_range_delay = 0.0;
+	cfptr->c_rad_lon = 0.0;
+	cfptr->c_rad_lat = 0.0;
+	cfptr->c_alt_msl = 0.0;
+	cfptr->c_alt_agl = 0.0;
+	cfptr->c_ew_grspeed = 0.0;
+	cfptr->c_ns_grspeed = 0.0;
+	cfptr->c_vert_vel = 0.0;
+	cfptr->c_head = 0.0;
+	cfptr->c_roll = 0.0;
+	cfptr->c_pitch = 0.0;
+	cfptr->c_drift = 0.0;
+	cfptr->c_rotang = 0.0;
+	cfptr->c_tiltang = 0.0;
+}
+
 
 void AnalyticAircraft::addNavError(double refLat, double refLon, QTime refTime, int analytic)
 {
