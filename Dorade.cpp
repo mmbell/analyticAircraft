@@ -356,6 +356,11 @@ asib_info* Dorade::getAircraftBlock(const int& ray)
 	return &aptr[ray];
 }
 
+vold_info* Dorade::getVolumeBlock()
+{
+	return vptr;
+}
+
 cfac_info* Dorade::getCfacBlock()
 {
 	return cfptr;

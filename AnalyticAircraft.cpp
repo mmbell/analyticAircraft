@@ -28,7 +28,7 @@ AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const 
 	//analyticType = analytic;
 	Pi = acos(-1);
 	beamwidth= -999.;
-	
+	msecOffset = 0;
 }
 
 AnalyticAircraft::~AnalyticAircraft()
@@ -65,6 +65,10 @@ bool AnalyticAircraft::processSweeps()
 	QTime refTime(configHash.value("ref_hr").toFloat(),
                   configHash.value("ref_min").toFloat(),
                   configHash.value("ref_sec").toFloat());
+	QDate refDate(configHash.value("ref_year").toFloat(),
+                  configHash.value("ref_mon").toFloat(),
+                  configHash.value("ref_day").toFloat());
+	QDateTime refDateTime(refDate, refTime, Qt::UTC);
 	QString demfile = configHash.value("dem_file");
 	
 	// Load the DEM
@@ -76,6 +80,7 @@ bool AnalyticAircraft::processSweeps()
 		analytic = beltrami;
 	} else if (mode == "wrf") {
 		analytic = wrf;
+		wrfFile.readWRF(configHash.value("wrf_file").toAscii().data());
 	} else if (mode == "constant") {
 		analytic = constant;
 	} else if (mode == "cylindrical") {
@@ -90,11 +95,17 @@ bool AnalyticAircraft::processSweeps()
 				// Create an analytic track, then add some navigation errors
 				clearCfacs();
 				if (configHash.value("track") == "analytic") {
-					analyticTrack(refLat, refLon, refTime, analytic);
+					if (f == 0) {
+						ryib_info* ryptr = swpfile.getRyibBlock(0);
+						QTime rayTime(ryptr->hour, ryptr->min, ryptr->sec, ryptr->msec);
+						QDateTime rayDateTime(refDateTime.date(), rayTime);
+						msecOffset = refDateTime.time().msecsTo(rayTime);
+					}
+					analyticTrack(refLat, refLon, refDateTime, analytic);
 				}
 				recalculateAirborneAngles();
 				resample_wind(refLat, refLon, analytic);
-				addNavError(refLat, refLon, refTime, analytic);
+				addNavError(refLat, refLon, refDateTime, analytic);
 				saveQCedSwp(f);
 			} else {
 				printf("\n\nError loading file %d\n", f);
@@ -140,7 +151,7 @@ void AnalyticAircraft::recalculateAirborneAngles()
 	swpfile.recalculateAirborneAngles();
 }	
 
-void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime, int analytic)
+void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime refDateTime, int analytic)
 {
 	
 	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
@@ -156,14 +167,28 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 	QTextStream outstream(&insituFile);
 	outstream.setRealNumberPrecision(4);
 	outstream.setFieldWidth(10);
-        outstream.setRealNumberNotation(QTextStream::FixedNotation);
+    outstream.setRealNumberNotation(QTextStream::FixedNotation);
+	vold_info* vptr = swpfile.getVolumeBlock();
+	vptr->year = refDateTime.date().year();
+	vptr->mon = refDateTime.date().month();
+	vptr->day = refDateTime.date().day();
+	vptr->hour = refDateTime.time().hour();
+	vptr->min = refDateTime.time().minute();
+	vptr->sec = refDateTime.time().second();
+	
 	for (int i=0; i < swpfile.getNumRays(); i++) {		
 		asib_info* aptr = swpfile.getAircraftBlock(i);
 		ryib_info* ryptr = swpfile.getRyibBlock(i);
-
+		ryptr->julian_day = refDateTime.date().dayOfYear();
 		QTime rayTime(ryptr->hour, ryptr->min, ryptr->sec, ryptr->msec);
-		int msecElapsed = refTime.msecsTo(rayTime);
-
+		QDateTime rayDateTime(refDateTime.date(), rayTime);
+		int msecElapsed = refDateTime.time().msecsTo(rayTime);
+		msecElapsed -= msecOffset;
+		rayTime = refDateTime.time().addMSecs(msecElapsed);
+		ryptr->hour = rayTime.hour();
+		ryptr->min = rayTime.minute();
+		ryptr->sec = rayTime.second();
+		ryptr->msec = rayTime.msec();
 		double radarLat, radarLon,radarAlt;
 		double radarX = refX + ew_gspeed * msecElapsed/1000.0;
 		double radarY = refY + ns_gspeed * msecElapsed/1000.0;
@@ -186,7 +211,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QTime refTime
 		if (analytic == beltrami) {
 			BeltramiFlow(hwavelength, vwavelength, x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == wrf) {
-			WrfResample(x, y, z, t, h, u, v, w, dz);
+			WrfResample(radarLat, radarLon, z, t, h, u, v, w, dz);
 		} else if (analytic == constant) {
 			ConstantWind(x, y, z, t, h, u, v, w, dz);
 		} else if (analytic == cylindrical) {
@@ -239,12 +264,12 @@ void AnalyticAircraft::clearCfacs()
 }
 
 
-void AnalyticAircraft::addNavError(double refLat, double refLon, QTime refTime, int analytic)
+void AnalyticAircraft::addNavError(double refLat, double refLon, QDateTime refDateTime, int analytic)
 {
 	
 	for (int i=0; i < swpfile.getNumRays(); i++) {
 		asib_info* aptr = swpfile.getAircraftBlock(i);
-		ryib_info* ryptr = swpfile.getRyibBlock(i);
+		//ryib_info* ryptr = swpfile.getRyibBlock(i);
 				
 		aptr->lon += configHash.value("lon_error").toFloat();
 		aptr->lat += configHash.value("lat_error").toFloat();
@@ -309,8 +334,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				
 				// Check the altitude if the beam is pointing downward
 				double absLat, absLon, h;
+				tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
 				if ((el <= 0) and (z < maxElevation)) {
-					tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
 					h = asterDEM.getElevation(absLat, absLon);
 					if (h < 0) h=0;
 				} else {
@@ -331,7 +356,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					u += 5*(sin(k*x)*cos(k*y));
 					v += -5*(cos(k*x)*sin(k*y)); */
 				} else if (analytic == wrf) {
-					WrfResample(x, y, z, t, h, u, v, w, dz);
+					WrfResample(absLat, absLon, z, t, h, u, v, w, dz);
 				} else if (analytic == constant) {
 					ConstantWind(x, y, z, t, h, u, v, w, dz);
 				} else if (analytic == cylindrical) {
@@ -550,10 +575,19 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	}
 }
 
-void AnalyticAircraft::WrfResample(double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)
+void AnalyticAircraft::WrfResample(double lat, double lon, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
-
-	
+    if ((z-h) < 75.0) {
+		u = v = w = 0.0;
+		dz = 100000.0;
+	} else {
+		double dbz = 0.0;
+		if (!wrfFile.getData(lat,lon,z,u,v,w,dbz)) {
+			u = v = w = dbz = 0.0;
+		}
+		dz = dbz;
+		//dz = pow(10.0,(dbz*0.1));
+	}
 	
 //height(i,k,j) = 0.5*(phb(i,k,j)+phb(i,k+1,j)+ph(i,k,j)+ph(i,k+1,j))/9.81
 

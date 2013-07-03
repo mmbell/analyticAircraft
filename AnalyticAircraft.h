@@ -16,6 +16,7 @@
 #include <QDomDocument>
 #include <QHash>
 #include "DEM.h"
+#include "WRF.h"
 
 class AnalyticAircraft
 {
@@ -33,9 +34,9 @@ public:
 
 	void recalculateAirborneAngles();
 
-	void analyticTrack(double refLat, double refLon, QTime refTime, int analytic);
+	void analyticTrack(double refLat, double refLon, QDateTime refDateTime, int analytic);
 	void clearCfacs();
-	void addNavError(double refLat, double refLon, QTime refTime, int analytic);
+	void addNavError(double refLat, double refLon, QDateTime refDateTime, int analytic);
 	void resample_wind(double refLat, double refLon, int analytic);
 
 	bool processSweeps();
@@ -58,7 +59,9 @@ private:
 	double Pi;
 	int analyticType;
 	int beamwidth;
-	
+	WRF wrfFile;
+	int msecOffset;
+
 	DEM asterDEM;
     QHash<QString, QString> configHash;
 	void BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz);
