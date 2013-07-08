@@ -14,6 +14,7 @@
 #include <QTextStream>
 #include <GeographicLib/TransverseMercatorExact.hpp>
 #include "read_dorade.h"
+#include "ReferenceState.h"
 
 AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const QDomElement& config)
 {
@@ -292,7 +293,7 @@ void AnalyticAircraft::addNavError(double refLat, double refLon, QDateTime refDa
 
 void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 {
-
+	ReferenceState* refstate = new ReferenceState("dunion_mt.snd");
 	// Resample the Doppler field with a Beltrami flow from Shapiro et al. 2009
 #pragma omp parallel for	
 	for (int i=0; i < swpfile.getNumRays(); i++) {
@@ -381,7 +382,45 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
                         refdata[n] = 10*log10(dz);
                         swdata[n] = 0.;
                         ncpdata[n] = 1.;
-                        double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
+						
+	                    // Fall speed
+	                    double Z = refdata[n];
+	                    double H = z;
+	                    double ZZ=pow(10.0,(Z*0.1));
+	                    double melting_zone = 1000.0;
+	                    double hlow= 5000.0; 
+	                    double hhi= hlow + melting_zone;
+                    
+	                    /* density correction term (rhoo/rho)*0.45 
+	                     0.45 density correction from Beard (1985, JOAT pp 468-471) */
+	                    double rho = refstate->getReferenceVariable(ReferenceVariable::rhoref, H);
+	                    double rhosfc = refstate->getReferenceVariable(ReferenceVariable::rhoref, 0.);
+	                    double DCOR = pow((rhosfc/rho),(double)0.45);
+                    
+	                    // The snow relationship (Atlas et al., 1973) --- VT=0.817*Z**0.063  (m/s) 
+	                    double VTS=-DCOR * (0.817*pow(ZZ,(double)0.063));
+                    
+	                    // The rain relationship (Joss and Waldvogel,1971) --- VT=2.6*Z**.107 (m/s) */
+	                    double VTR=-DCOR * (2.6*pow(ZZ,(double).107));
+                    
+	                    /* Test if height is in the transition region between SNOW and RAIN
+	                     defined as hlow in km < H < hhi in km
+	                     if in the transition region do a linear weight of VTR and VTS */
+	                    double mixed_dbz = 20.0;
+	                    double rain_dbz = 30.0;
+	                    if ((Z > mixed_dbz) and 
+	                        (Z <= rain_dbz)) {
+	                        double WEIGHTR=(Z-mixed_dbz)/(rain_dbz - mixed_dbz);
+	                        double WEIGHTS=1.-WEIGHTR;
+	                        VTS=(VTR*WEIGHTR+VTS*WEIGHTS)/(WEIGHTR+WEIGHTS);
+	                    } else if (Z > rain_dbz) {
+	                        VTS=VTR;
+	                    }
+	                    double w_term=VTR*(hhi-H)/melting_zone + VTS*(H-hlow)/melting_zone;  
+	                    if (H < hlow) w_term=VTR; 
+	                    if (H > hhi) w_term=VTS;
+						
+                        double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + (w+w_term)*sin(el);
                         velcorr[n] = vr;
                         
                         // Add in the aircraft motion
@@ -543,6 +582,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 
 		}
 	}
+	delete refstate;
 }
 
 void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, double x, double y, double z, double t, double h, double &u, double &v, double &w, double &dz)

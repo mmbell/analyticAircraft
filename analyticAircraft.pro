@@ -8,8 +8,8 @@ DEPENDPATH += .
 INCLUDEPATH += .
 
 # Input
-HEADERS += AnalyticAircraft.h DEM.h Dorade.h precision.h read_dorade.h WRF.h
-SOURCES += AnalyticAircraft.cpp DEM.cpp Dorade.cpp main.cpp WRF.cpp
+HEADERS += AnalyticAircraft.h DEM.h Dorade.h precision.h read_dorade.h WRF.h ReferenceState.h
+SOURCES += AnalyticAircraft.cpp DEM.cpp Dorade.cpp main.cpp WRF.cpp ReferenceState.cpp
 LIBS += -lgeotiff -ltiff -lgeographic -lnetcdf_c++ -lgomp
 QT += xml
 #CONFIG += debug
