@@ -225,7 +225,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime ref
 		aptr->ew_gspeed= ew_gspeed;
 		aptr->ns_gspeed = ns_gspeed;
 		aptr->vert_vel= 0.;
-		aptr->head= 0.;
+		aptr->head= configHash.value("heading_angle").toFloat();;
 		aptr->roll= 0.;
 		aptr->pitch= 0.;
 		aptr->drift= 0.;
@@ -696,7 +696,7 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 		<< "dem_file" << "analytic" << "ns_gspeed" << "radar_alt" << "beamtype"
 		<< "beamwidth" << "tilt_angle" << "lon_error" << "lat_error" << "alt_error"
 		<< "ew_error" << "ns_error" << "vv_error" << "heading_error" << "roll_error"
-		<< "pitch_error" << "drift_error" << "tilt_error" << "range_delay_error"
+		<< "pitch_error" << "drift_error" << "tilt_error" << "range_delay_error" << "heading_angle"
 		<< "hwavelength" << "vwavelength" << "mean_u" << "mean_v" << "peak_w" << "noise";
  	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
