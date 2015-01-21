@@ -225,7 +225,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime ref
 		aptr->ew_gspeed= ew_gspeed;
 		aptr->ns_gspeed = ns_gspeed;
 		aptr->vert_vel= 0.;
-		aptr->head= 0.;
+		aptr->head= configHash.value("heading").toFloat();
 		aptr->roll= 0.;
 		aptr->pitch= 0.;
 		aptr->drift= 0.;
@@ -617,7 +617,7 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 
 void AnalyticAircraft::WrfResample(double lat, double lon, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
-    if ((z-h) < 75.0) {
+    if ((z-h) < 0.0) {
 		u = v = w = 0.0;
 		dz = 100000.0;
 	} else {
@@ -697,7 +697,8 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 		<< "beamwidth" << "tilt_angle" << "lon_error" << "lat_error" << "alt_error"
 		<< "ew_error" << "ns_error" << "vv_error" << "heading_error" << "roll_error"
 		<< "pitch_error" << "drift_error" << "tilt_error" << "range_delay_error"
-		<< "hwavelength" << "vwavelength" << "mean_u" << "mean_v" << "peak_w" << "noise";
+		<< "hwavelength" << "vwavelength" << "mean_u" << "mean_v" << "peak_w" << "noise"
+		<< "heading";
  	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
             std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << std::endl;
