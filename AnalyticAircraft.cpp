@@ -176,7 +176,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime ref
 	vptr->hour = refDateTime.time().hour();
 	vptr->min = refDateTime.time().minute();
 	vptr->sec = refDateTime.time().second();
-	
+        swpfile.setNyquistVelocity(200.0);	
 	for (int i=0; i < swpfile.getNumRays(); i++) {		
 		asib_info* aptr = swpfile.getAircraftBlock(i);
 		ryib_info* ryptr = swpfile.getRyibBlock(i);
@@ -372,13 +372,18 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				beamwidth = configHash.value("beamwidth").toFloat();
 				
 				if (beamwidth < 0) {
-                    /* if ((z-h) < 75) {
-                        refdata[n] = 50.;
+                    if ((z-h) < 75) {
+                                refdata[n] = -32768.;
+                                swdata[n] = -32768.;
+                                ncpdata[n] = -32768.;
+                                veldata[n] = -32768.;
+                                velcorr[n] = -32768.;
+                        /* refdata[n] = 50.;
                         swdata[n] = 0.;
                         ncpdata[n] = 1.;
                         veldata[n] = 0.;
-                        velcorr[n] = 0.;
-                    } else { */
+                        velcorr[n] = 0.; */
+                    } else {
                         refdata[n] = 10*log10(dz);
                         swdata[n] = 0.;
                         ncpdata[n] = 1.;
@@ -445,7 +450,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
                         //double dznoise = rand() % ((int)refdata[n] + 20) + 1;
                         //double noise = configHash.value("noise").toFloat() * 1/(dznoise) * ((rand() % 2) - 1);
                         veldata[n] = vr;
-                    //}
+                    }
 				} else {
 					// Loop over the width of the beam
 					double maxbeam = Pi;

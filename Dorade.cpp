@@ -337,6 +337,11 @@ float Dorade::getNyquistVelocity()
 	return rptr->unambig_vel;
 }
 
+void Dorade::setNyquistVelocity(const float& nyquist)
+{
+        rptr->unambig_vel = nyquist;
+}
+
 QDateTime Dorade::getRayTime(int& ray)
 {
 	int year = vptr->year;

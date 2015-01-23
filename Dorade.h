@@ -55,6 +55,7 @@ public:
 	float getHeading(const int& ray);
 	float getBeamwidthDeg();
 	float getNyquistVelocity();
+        void setNyquistVelocity(const float& nyquist);
 	vold_info* getVolumeBlock();
 	asib_info* getAircraftBlock(const int& ray);
 	cfac_info* getCfacBlock();
