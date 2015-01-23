@@ -16,6 +16,8 @@
 		<beamtype>1</beamtype>
 		<beamwidth>-999</beamwidth>
 		<tilt_angle>-16.5</tilt_angle>
+		<track>analytic</track>
+		<heading>0.0</heading>
 		<lon_error>0.0</lon_error>
 		<lat_error>0.0</lat_error>
 		<alt_error>0.2</alt_error>
