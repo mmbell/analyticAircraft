@@ -18,14 +18,14 @@
 
 AnalyticAircraft::AnalyticAircraft(const QString& in, const QString& out, const QString& suffix, const QDomElement& config)
 {
-	
+
 	// Setup the data path
 	dataPath = QDir(in);
 	outPath = QDir(out);
 	swpSuffix = suffix;
     parseXMLconfig(config);
 	readSwpDir();
-	
+
 	//analyticType = analytic;
 	Pi = acos(-1);
 	beamwidth= -999.;
@@ -42,19 +42,19 @@ bool AnalyticAircraft::readSwpDir()
 	dataPath.setFilter(QDir::Files);
 	dataPath.setSorting(QDir::Name);
 	QStringList filenames = dataPath.entryList();
-	
+
 	// Read in the list sweepfiles
 	for (int i = 0; i < filenames.size(); ++i) {
 		QStringList fileparts = filenames.at(i).split(".");
 		if (fileparts.size() == 6) swpfileList.append(filenames.at(i));
 	}
-	
-	if (swpfileList.isEmpty()) { 
-		return false; 
+
+	if (swpfileList.isEmpty()) {
+		return false;
 	} else {
 		return true;
 	}
-	
+
 }
 
 bool AnalyticAircraft::processSweeps()
@@ -71,10 +71,10 @@ bool AnalyticAircraft::processSweeps()
                   configHash.value("ref_day").toFloat());
 	QDateTime refDateTime(refDate, refTime, Qt::UTC);
 	QString demfile = configHash.value("dem_file");
-	
+
 	// Load the DEM
 	if(!asterDEM.readDem(demfile.toAscii().data())) return false;
-	
+
 	QString mode = configHash.value("analytic");
 	int analytic = 0;
 	if (mode == "beltrami") {
@@ -86,8 +86,8 @@ bool AnalyticAircraft::processSweeps()
 		analytic = constant;
 	} else if (mode == "cylindrical") {
 		analytic = cylindrical;
-	} 
-	
+	}
+
 	// Resample an analytic field
 	if (getfileListsize()) {
 		for (int f = 0; f < getfileListsize(); ++f) {
@@ -112,12 +112,12 @@ bool AnalyticAircraft::processSweeps()
 				printf("\n\nError loading file %d\n", f);
 				return false;
 			}
-		} 	
+		}
 	} else {
-		std::cout << "No swp files exist in " << dataPath.dirName().toStdString() << "\n"; 
+		std::cout << "No swp files exist in " << dataPath.dirName().toStdString() << "\n";
 		return false;
 	}
-		
+
 	return true;
 }
 
@@ -129,11 +129,11 @@ bool AnalyticAircraft::load(const int& swpIndex)
 	QString filename = dataPath.absolutePath() + "/" + getswpfileName(swpIndex);
 	swpfile.setFilename(filename);
 	// Read in the swp file
-	if(swpfile.readSwpfile()) 
+	if(swpfile.readSwpfile())
 		return true;
-	
+
 	return false;
-	
+
 }
 
 /****************************************************************************************
@@ -143,20 +143,20 @@ bool AnalyticAircraft::saveQCedSwp(const int& swpIndex)
 {
 	QString qcfilename = outPath.absolutePath() + "/" + getswpfileName(swpIndex) + "." + swpSuffix;
 	if (swpfile.writeSwpfile(qcfilename)) return true;
-	
+
 	return false;
 }
 
 void AnalyticAircraft::recalculateAirborneAngles()
 {
 	swpfile.recalculateAirborneAngles();
-}	
+}
 
 void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime refDateTime, int analytic)
 {
-	
-	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
-	
+
+	GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM();
+
 	double ns_gspeed = configHash.value("ns_gspeed").toFloat();
 	double ew_gspeed = configHash.value("ew_gspeed").toFloat();
 	double refX, refY;
@@ -194,7 +194,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime ref
 		double radarX = refX + ew_gspeed * msecElapsed/1000.0;
 		double radarY = refY + ns_gspeed * msecElapsed/1000.0;
 		radarAlt = configHash.value("radar_alt").toFloat() / 1000.0;
-		
+
 		// If the aircraft is below the ground there is a problem
 		tm.Reverse(refLon, radarX, radarY, radarLat, radarLon);
 		int h = asterDEM.getElevation(radarLat, radarLon);
@@ -238,7 +238,7 @@ void AnalyticAircraft::analyticTrack(double refLat, double refLon, QDateTime ref
 		outstream << ryptr->hour << ryptr->min << ryptr->sec << ryptr->msec << msecElapsed << radarLat << radarLon << radarAlt << u << v << w << endl;
 	}
 	insituFile.close();
-	
+
 }
 
 void AnalyticAircraft::clearCfacs()
@@ -267,11 +267,11 @@ void AnalyticAircraft::clearCfacs()
 
 void AnalyticAircraft::addNavError(double refLat, double refLon, QDateTime refDateTime, int analytic)
 {
-	
+
 	for (int i=0; i < swpfile.getNumRays(); i++) {
 		asib_info* aptr = swpfile.getAircraftBlock(i);
 		//ryib_info* ryptr = swpfile.getRyibBlock(i);
-				
+
 		aptr->lon += configHash.value("lon_error").toFloat();
 		aptr->lat += configHash.value("lat_error").toFloat();
 		aptr->alt_msl += configHash.value("alt_error").toFloat();
@@ -287,7 +287,7 @@ void AnalyticAircraft::addNavError(double refLat, double refLon, QDateTime refDa
 		aptr->head_change= 0.;
 		aptr->pitch_change= 0.;
 	}
-	
+
 }
 
 
@@ -295,19 +295,19 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 {
 	ReferenceState* refstate = new ReferenceState("dunion_mt.snd");
 	// Resample the Doppler field with a Beltrami flow from Shapiro et al. 2009
-#pragma omp parallel for	
+#pragma omp parallel for
 	for (int i=0; i < swpfile.getNumRays(); i++) {
-		GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM;
+		GeographicLib::TransverseMercatorExact tm = GeographicLib::TransverseMercatorExact::UTM();
 		double refX, refY;
 		tm.Forward(refLon, refLat, refLon, refX, refY);
 		int maxElevation = asterDEM.getMaxElevation();
 		float nyquist = swpfile.getNyquistVelocity();
-		
+
 		float az = swpfile.getAzimuth(i)*Pi/180.;
 		float el = swpfile.getElevation(i)*Pi/180.;
 		float radarLat = swpfile.getRadarLat(i);
 		float radarLon = swpfile.getRadarLon(i);
-		float radarAlt = swpfile.getRadarAlt(i);		
+		float radarAlt = swpfile.getRadarAlt(i);
 		float* refdata = swpfile.getRayData(i, "ZZ");
 		float* veldata = swpfile.getRayData(i, "VR");
 		float* velcorr = swpfile.getRayData(i, "VV");
@@ -324,15 +324,15 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 			double relY = range*cos(az)*cos(el);
 			double rEarth = 6371000;
 			double relZ = sqrt(range*range + rEarth*rEarth + 2.0 * range * rEarth * sin(el)) - rEarth;
-			
+
 			double x = radarX + relX - refX;
 			double y = radarY + relY - refY;
 			double z = relZ + radarAlt*1000;
 			double t = 0.;
-						
+
 			double u, v, w, dz;
 			if ((z > -5000.0) and (z <= 20000.0)) {
-				
+
 				// Check the altitude if the beam is pointing downward
 				double absLat, absLon, h;
 				tm.Reverse(refLon, radarX + relX, radarY + relY, absLat, absLon);
@@ -365,55 +365,55 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				}
 				// Background reflectivity noise floor
 				//if (dz == 0) dz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
-				
+
 				/* The default beamwidth is set to -999 which assumes the beam is infinitely small.
 				    Increasing it to realistic values and/or changing the beam pattern to include sidelobes increases
 				    the calculation time significantly but gives a more realistic representation of the winds */
 				beamwidth = configHash.value("beamwidth").toFloat();
-				
+
 				if (beamwidth < 0) {
                     if ((z-h) < 75) {
-                                refdata[n] = -32768.;
+                              /*  refdata[n] = -32768.;
                                 swdata[n] = -32768.;
                                 ncpdata[n] = -32768.;
                                 veldata[n] = -32768.;
-                                velcorr[n] = -32768.;
-                        /* refdata[n] = 50.;
+                                velcorr[n] = -32768.; */
+                        refdata[n] = 50.;
                         swdata[n] = 0.;
                         ncpdata[n] = 1.;
                         veldata[n] = 0.;
-                        velcorr[n] = 0.; */
+                        velcorr[n] = 0.;
                     } else {
                         refdata[n] = 10*log10(dz);
                         swdata[n] = 0.;
                         ncpdata[n] = 1.;
-						
+
 	                    // Fall speed
 	                    double Z = refdata[n];
 	                    double H = z;
 	                    double ZZ=pow(10.0,(Z*0.1));
 	                    double melting_zone = 1000.0;
-	                    double hlow= 5000.0; 
+	                    double hlow= 5000.0;
 	                    double hhi= hlow + melting_zone;
-                    
-	                    /* density correction term (rhoo/rho)*0.45 
+
+	                    /* density correction term (rhoo/rho)*0.45
 	                     0.45 density correction from Beard (1985, JOAT pp 468-471) */
 	                    double rho = refstate->getReferenceVariable(ReferenceVariable::rhoref, H);
 	                    double rhosfc = refstate->getReferenceVariable(ReferenceVariable::rhoref, 0.);
 	                    double DCOR = pow((rhosfc/rho),(double)0.45);
-                    
-	                    // The snow relationship (Atlas et al., 1973) --- VT=0.817*Z**0.063  (m/s) 
+
+	                    // The snow relationship (Atlas et al., 1973) --- VT=0.817*Z**0.063  (m/s)
 	                    double VTS=-DCOR * (0.817*pow(ZZ,(double)0.063));
-                    
+
 	                    // The rain relationship (Joss and Waldvogel,1971) --- VT=2.6*Z**.107 (m/s) */
 	                    double VTR=-DCOR * (2.6*pow(ZZ,(double).107));
-                    
+
 	                    /* Test if height is in the transition region between SNOW and RAIN
 	                     defined as hlow in km < H < hhi in km
 	                     if in the transition region do a linear weight of VTR and VTS */
 	                    double mixed_dbz = 20.0;
 	                    double rain_dbz = 30.0;
-	                    if ((Z > mixed_dbz) and 
+	                    if ((Z > mixed_dbz) and
 	                        (Z <= rain_dbz)) {
 	                        double WEIGHTR=(Z-mixed_dbz)/(rain_dbz - mixed_dbz);
 	                        double WEIGHTS=1.-WEIGHTR;
@@ -421,13 +421,13 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 	                    } else if (Z > rain_dbz) {
 	                        VTS=VTR;
 	                    }
-	                    double w_term=VTR*(hhi-H)/melting_zone + VTS*(H-hlow)/melting_zone;  
-	                    if (H < hlow) w_term=VTR; 
+	                    double w_term=VTR*(hhi-H)/melting_zone + VTS*(H-hlow)/melting_zone;
+	                    if (H < hlow) w_term=VTR;
 	                    if (H > hhi) w_term=VTS;
-						
+
                         double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + (w+w_term)*sin(el);
                         velcorr[n] = vr;
-                        
+
                         // Add in the aircraft motion
                         double aircraft_vr = swpfile.getAircraftVelocity(i);
                         vr -= aircraft_vr;
@@ -440,12 +440,23 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
                                 vr += 2*nyquist;
                             }
                         }
-                        
+
                         // Add some random noise
                         double noise = configHash.value("noise").toFloat();
                         if (noise > 0) {
-                            noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
-                            vr += noise;
+														double u1, u2, g;
+														g = 2.0;
+														while ( g >= 1 ) {
+															u1 = 2 * float(rand() % 1000)/1000.0 - 1;
+															u2 = 2 * float(rand() % 1000)/1000.0 - 1;
+															g = u1*u1 + u2*u2;
+															//std::cout << g << "\t" << u1 << "\t" << u2 << "\n";
+														}
+
+														g = sqrt( (-2 * log(g))  / g );
+														double g1 = u2 * g;
+                            //noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
+                            vr += g1*noise;
                         }
                         //double dznoise = rand() % ((int)refdata[n] + 20) + 1;
                         //double noise = configHash.value("noise").toFloat() * 1/(dznoise) * ((rand() % 2) - 1);
@@ -459,8 +470,8 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 
 					// Circle in spherical plane to radar beam
 					double reftmp, veltmp, velcorrtmp, swtmp, ncptmp, weight;
-					
-					reftmp = dz;					
+
+					reftmp = dz;
 					double vr = u*sin(az)*cos(el) + v*cos(az)*cos(el) + w*sin(el);
 					velcorrtmp = vr;
 					double aircraft_vr = swpfile.getAircraftVelocity(i);
@@ -473,15 +484,15 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 						while (vr < -nyquist) {
 							vr += 2*nyquist;
 						}
-					}					
+					}
 					veltmp = vr;
 					swtmp = 0.0;
 					ncptmp = 1.0;
 					weight = 1.0;
-										
+
 					for (double r=beamincr; r <= maxbeam; r += beamincr) {
-						double beamaxis = r; //(beamwidth*Pi/180.); 
-						
+						double beamaxis = r; //(beamwidth*Pi/180.);
+
 						for (double theta=0; theta < 360; theta += 5) {
 							double azmod = az + r*cos(theta * Pi / 180.);
 							double elmod = el + r*sin(theta * Pi / 180.);
@@ -546,20 +557,31 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 							// Add some random noise
 							//double dznoise = 10*log10(dz) + 40.;
 							//if (dznoise > 1.) dznoise = 1.;
-                            double noise = configHash.value("noise").toFloat();
-                            if (noise > 0) {
-                                noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
-                                vr += noise;
-                            }
+							double noise = configHash.value("noise").toFloat();
+							if (noise > 0) {
+								double u1, u2, g;
+								g = 2.0;
+								while ( g >= 1 ) {
+									u1 = 2 * float(rand() % 1000)/1000.0 - 1;
+									u2 = 2 * float(rand() % 1000)/1000.0 - 1;
+									g = u1*u1 + u2*u2;
+									//std::cout << g << "\t" << u1 << "\t" << u2 << "\n";
+								}
+
+								g = sqrt( (-2 * log(g))  / g );
+								double g1 = u2 * g;
+								//noise = (rand() % int(10*noise) + 1) * ((rand() % 3) - 1) / 10.0;
+								vr += g1*noise;
+							}
 							veltmp += vr*dz*power;
-							weight += dz*power;	
+							weight += dz*power;
 							double vrmean = veltmp/weight;
 							swtmp += dz*power*(vr - vrmean)*(vr - vrmean);
 							//ncptmp += 1/swtmp;
 						}
 					}
 					double bgdz = pow(10.0,((-89.339 + 19.295 * log10(range))/10.0));
-					if (reftmp < bgdz) reftmp = bgdz; 
+					if (reftmp < bgdz) reftmp = bgdz;
 					refdata[n] = 10*log10(reftmp);
 					swdata[n] = sqrt(swtmp/weight);
 					ncpdata[n] = (1 - swdata[n] / 8.) + refdata[n] / 50.;
@@ -573,7 +595,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 					}
 					if (ncpdata[n] < 0.2) veldata[n] += configHash.value("noise").toFloat() *
                         (rand() % 50) *((rand() % 2) - 1);
-					
+
 					velcorr[n] = velcorrtmp/weight;
 				}
 			} else {
@@ -583,7 +605,7 @@ void AnalyticAircraft::resample_wind(double refLat, double refLon, int analytic)
 				veldata[n] = -32768.;
 				velcorr[n] = -32768.;
 			}
-			
+
 
 		}
 	}
@@ -601,11 +623,11 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 	double U = configHash.value("mean_u").toFloat();
 	double V = configHash.value("mean_v").toFloat();
 	double nu = 15.11e-6;
-	
-    u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) + 
+
+    u = U - amp*(wavenum*l*cos(k*(x - U*t))*sin(l*(y-V*t))*sin(m*z) +
 						m*k*sin(k*(x-U*t))*cos(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
-	v = V + amp*(wavenum*k*sin(k*(x - U*t))*cos(l*(y-V*t))*sin(m*z) - 
+	v = V + amp*(wavenum*k*sin(k*(x - U*t))*cos(l*(y-V*t))*sin(m*z) -
 						m*l*cos(k*(x-U*t))*sin(l*(y-V*t))*cos(m*z))
 	*exp(-nu*wavenum*wavenum*t);
 	w = A*cos(k*(x-U*t))*cos(l*(y-V*t))*sin(m*z)*exp(-nu*wavenum*wavenum*t);
@@ -622,7 +644,7 @@ void AnalyticAircraft::BeltramiFlow(double hwavelength, double vwavelength, doub
 
 void AnalyticAircraft::WrfResample(double lat, double lon, double z, double t, double h, double &u, double &v, double &w, double &dz)
 {
-    if ((z-h) < 75.0) {
+    if ((z-h) < 0.0) {
 		u = v = w = 0.0;
 		dz = 100000.0;
 	} else {
@@ -633,7 +655,7 @@ void AnalyticAircraft::WrfResample(double lat, double lon, double z, double t, d
 		dz = dbz;
 		//dz = pow(10.0,(dbz*0.1));
 	}
-	
+
 //height(i,k,j) = 0.5*(phb(i,k,j)+phb(i,k+1,j)+ph(i,k,j)+ph(i,k+1,j))/9.81
 
 }
@@ -667,9 +689,9 @@ void AnalyticAircraft::CylindricalWind(double x, double y, double z, double t, d
 
 bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 {
-    
+
     std::cout << "Parsing configuration file...\n";
-	
+
 	// Parse the nodes to a hash
 	QDomNodeList nodeList = config.childNodes();
 	for (int i = 0; i < nodeList.count(); i++) {
@@ -694,7 +716,7 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 			}
 		}
 	}
-	
+
 	// Validate the hash -- multiple passes are not validated currently
 	QStringList configKeys;
 	configKeys << "ref_lat" << "ref_lon" << "ref_hr" << "ref_min" << "ref_sec"
@@ -703,6 +725,7 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 		<< "ew_error" << "ns_error" << "vv_error" << "heading_error" << "roll_error"
 		<< "pitch_error" << "drift_error" << "tilt_error" << "range_delay_error" << "heading_angle"
 		<< "hwavelength" << "vwavelength" << "mean_u" << "mean_v" << "peak_w" << "noise";
+		<< "track";
  	for (int i = 0; i < configKeys.count(); i++) {
 		if (!configHash.contains(configKeys.at(i))) {
             std::cout <<	"No configuration found for <" << configKeys.at(i).toStdString() << "> aborting..." << std::endl;
@@ -710,6 +733,5 @@ bool AnalyticAircraft::parseXMLconfig(const QDomElement& config)
 		}
 	}
 	return true;
-	
-}
 
+}
